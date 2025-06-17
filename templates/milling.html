@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Milling-Time</title>
+    <link rel="stylesheet" href="project.css" />
+</head>
+<body>
+   <div id="doc">
+        <div id="navbar">
+            <h1>MACHINING TIME ESTIMATOR</h1>
+        </div>
+        <div class="biginfo">
+            <div class="butt1">
+                <button onclick="window.location.href='project.html';">Home</button>
+                <hr>
+                <button onclick="window.location.href='lathe.html';">Lathe</button>
+                <hr>
+                <button onclick="window.location.href='milling.html';">Miliing</button>
+                <hr>
+            </div>
+            <div class="info">
+
+                <p>JOB MATERIAL :
+                    <select class="dropdown" onchange="addMaterial()">
+                        <option value="select">Select Material</option>
+                        <option value="steel">Steel</option>
+                        <option value="aluminium">Aluminuim</option>
+                        <option value="brass">Brass</option>
+                        <option value="copper">Copper</option>
+                        <option value="plastic">Plastic</option>
+                        <option value="titanium">Titanium</option>
+                        <option value="wood">Wood</option>
+                        <option value="carbonalloy">Carbon Alloy</option>
+                        <option value="ceramics">Ceramics</option>
+                        <option value="rubber">Rubber</option>
+                        <option value="stainlesssteel">Stainless Steel</option>
+                    </select>
+                </p>
+                <div id="home">
+                    <div class="hd"><h2> Select the Operation</h2></div>
+        <select id="optionSelect" onchange="addProcess()">
+        <option value="select" disabled selected>--Select Process--</option>
+        <option value="slabmilling">Slab Milling</option>
+        <option value="facemilling">Face Milling</option>
+        <option value="endmilling">End Milling</option>
+        <!-- <option value="turning">Turning</option>
+        <option value="grooving">Grooving</option>
+        <option value="threading">Threading</option>
+        <option value="boring">Boring</option>
+        <option value="knurling">Knurling</option> -->
+        </select>  
+                 <div id="formContainer"></div>
+                  <button onclick="calculateTotalTime()">Calculate Total Time</button>
+                  <h2>Cumulative Total Time: <span id="totalTime">0</span> minutes</h2>
+
+  <div class="result">
+  <button onclick="clearAll()">Clear All</button>
+  <button onclick="exportToPDF()">Export to PDF</button>
+</div>
+ 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+     let processCount=0;
+ 
+    function addProcess() {
+      const selected = document.getElementById('optionSelect').value;
+      if (!selected) return;
+
+
+      const container = document.getElementById('formContainer');
+       if (!container.classList.contains('form-container-active')) {
+    container.classList.add('form-container-active');
+  }
+      const entryId = `process_${processCount++}`;
+
+      let html = `<div class="process-entry" id="${entryId}">
+          <h3>${selected.charAt(0).toUpperCase() + selected.slice(1)} (${entryId})</h3>`; 
+
+       switch (selected) {
+        case 'slabmilling':
+        case 'facemilling':
+        case 'endmilling':
+         html += `
+            <label>Length (mm): <input type="number" class="length"></label>
+            <label>Width (mm): <input type="number" class="length"></label>
+            <label>Height (mm): <input type="number" class="height"></label>
+            <label>Thickness(mm): <input type="number" class="thickness"></label>
+            <label>Feed(mm/rev): <input type="number" class="feed"></label>
+            <label>RPM (rev/min): <input type="number" class="rpm"></label>
+          `;
+          break;
+       }
+        html += `
+        <label>Time (min): <input type="text" class="time" readonly></label>
+        <button onclick="removeEntry('${entryId}')">Remove</button>
+      </div>`;
+      container.insertAdjacentHTML('beforeend', html);
+    } 
+    
+     function removeEntry(id) {
+      document.getElementById(id)?.remove();
+      calculateTotalTime();
+    }
+
+     function calculateTotalTime() {
+      let total = 0;
+      const entries = document.querySelectorAll('.process-entry');
+
+      <!-- const extraTimes={
+        facing: 10,
+        turning: 20,
+        drilling:20,
+        boring: 15,
+        threading:3,
+       
+      } -->
+    
+    entries.forEach(entry=> {
+        const process = entry.querySelector('h3').innerText.split(' ')[0].toLowerCase();
+        const length = parseFloat(entry.querySelector('.length')?.value);
+        const width = parseFloat(entry.querySelector('.length')?.value);
+        const height = parseFloat(entry.querySelector('.height')?.value);
+        const thickness = parseFloat(entry.querySelector('.thickness')?.value);
+        const feed = parseFloat(entry.querySelector('.feed')?.value);
+        const rpm = parseFloat(entry.querySelector('.rpm')?.value);
+        let timeField = entry.querySelector('.time'); 
+
+                 let time = 0;
+        switch (process) {
+          case 'slabmilling':
+           if (!isNaN(length) && !isNaN(feed) && feed > 0) {
+              time = (length/ feed);
+           }
+           break;
+        
+          case 'endmilling':
+           if (!isNaN(start) && !isNaN(feed) && feed > 0) {
+              time = (length/ feed);
+           }
+           break;
+
+          case 'facemilling':
+           if (!isNaN(length) && !isNaN(feed) && feed > 0) {
+              time = (length/feed);
+           }
+           break;
+        }
+        const extra =extraTimes[process]|| 0;
+
+
+        if (!isNaN(time) && time > 0) {
+            const timeWithExtra = time +extra;
+          timeField.value = timeWithExtra.toFixed(2);
+          total += timeWithExtra;
+        } else {
+          timeField.value = 'Invalid';
+        }
+      });
+      const restTime = 50;
+  const finalTotal = total + restTime;
+     
+
+
+      document.getElementById('totalTime').innerText = finalTotal.toFixed(2);
+    }
+
+     function clearAll() {
+      document.getElementById('formContainer').innerHTML = '';
+      document.getElementById('formContainer').classList.remove('form-container-active');
+      document.getElementById('totalTime').innerText = '0';
+      processCount = 0;
+      document.getElementById('optionSelect').value = '';
+    }
+     async function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      let y = 10;
+      doc.text('Machining Time Report', 10, y);
+      y += 10;
+
+
+      const entries = document.querySelectorAll('.process-entry');
+      entries.forEach(entry => {
+        const title = entry.querySelector('h3').innerText;
+        const inputs = entry.querySelectorAll('input');
+        const values = Array.from(inputs).map(input => input.value);
+        doc.text(`${title}`, 10, y);
+        y += 8;
+        doc.text(`Inputs: ${values.join(', ')}`, 10, y);
+        y += 10;
+      });
+
+
+      doc.text(`Total Time: ${document.getElementById('totalTime').innerText} min`, 10, y);
+      doc.save('machining_time_report.pdf');
+    }
+     
+</script>
+</div>
+</body>
+</html>

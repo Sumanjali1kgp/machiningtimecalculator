@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Machining Time Calculator</title>
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body>
+    <div id="doc">
+        <div id="navbar">
+            <h1>MACHINING TIME ESTIMATOR</h1>
+        </div>
+        <div class="biginfo">
+            <div class="butt1">
+                <button onclick="window.location.href='/'">Home</button>
+                <hr>
+                <button onclick="window.location.href='/lathe'">Lathe</button>
+                <hr>
+                <button onclick="window.location.href='/milling'">Milling</button>
+                <hr>
+            </div>
+            <div class="info">
+                <p>JOB MATERIAL :
+                    <select id="materialSelect" class="dropdown">
+                        <option value="">Select Material</option>
+                    </select>
+                </p>
+                <div id="home">
+                    <div class="hd">
+                        <h2>Select the Operation</h2>
+                    </div>
+                    <select id="operationSelect" onchange="addProcess()">
+                        <option value="">--Select Process--</option>
+                    </select>
+                    <div id="formContainer"></div>
+
+                    <button onclick="calculateTotalTime()">Calculate Total Time</button>
+                    <p><h2>Cumulative Total Time: <span id="totalTime">0</span> minutes</h2></p>
+
+                    <div class="result">
+                        <button onclick="clearAll()">Clear All</button>
+                        <button onclick="exportToPDF('shop')">Export to PDF (For Machine Shop)</button>
+                        <button onclick="exportToPDF('customer')">Export to PDF (For Customer)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        let processCount = 0;
+
+        // Function to fetch and populate materials
+        async function fetchAndPopulateMaterials() {
+            try {
+                console.log('Fetching materials...');
+                const response = await fetch('/api/materials');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
+                }
+                
+                const materials = await response.json();
+                console.log('Materials API response:', materials);
+                
+                if (!Array.isArray(materials)) {
+                    throw new Error('Invalid response format: expected an array of materials');
+                }
+                const materialSelect = document.getElementById('materialSelect');
+                
+                // Clear existing options except the first one
+                while (materialSelect.options.length > 1) {
+                    materialSelect.remove(1);
+                }
+                
+                // Add new material options
+                materials.forEach(material => {
+                    const option = new Option(material.name, material.id);
+                    materialSelect.add(option);
+                });
+                
+                console.log('Materials loaded successfully');
+                return true;
+            } catch (error) {
+                console.error('Error loading materials:', error);
+                alert('Failed to load materials. Please check console for details.');
+                return false;
+            }
+        }
+
+        // Function to fetch and populate operations
+        async function fetchAndPopulateOperations() {
+            try {
+                console.log('Fetching operations...');
+                const response = await fetch('/api/operations');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
+                }
+                
+                const operations = await response.json();
+                console.log('Operations API response:', operations);
+                
+                if (!Array.isArray(operations)) {
+                    throw new Error('Invalid response format: expected an array of operations');
+                }
+
+                const operationSelect = document.getElementById('operationSelect');
+                
+                // Clear existing options except the first one
+                while (operationSelect.options.length > 1) {
+                    operationSelect.remove(1);
+                }
+                
+                // Add new operation options
+                operations.forEach(op => {
+                    const option = new Option(op.name, op.id);
+                    operationSelect.add(option);
+                });
+                
+                // Store operations for later use
+                window.operations = operations.reduce((acc, op) => {
+                    acc[op.id] = op.name.toLowerCase();
+                    return acc;
+                }, {});
+                
+                console.log('Operations loaded successfully');
+                return true;
+            } catch (error) {
+                console.error('Error loading operations:', error);
+                alert('Failed to load operations. Please check console for details.');
+                return false;
+            }
+        }
+
+        // Function to create operation form based on selected operation
+        function createOperationForm(operationType, id) {
+            let formHTML = `
+                <div class="operation-form" id="form-${id}">
+                    <h3>${operationType.charAt(0).toUpperCase() + operationType.slice(1)} Operation</h3>
+                    <div class="form-group">
+                        <label>Operation Name:</label>
+                        <input type="text" id="opName-${id}" value="${operationType}" readonly>
+                    </div>`;
+
+            // Common parameters
+            formHTML += `
+                    <div class="form-group">
+                        <label>Tool:</label>
+                        <input type="text" id="tool-${id}" placeholder="Tool name/number">
+                    </div>
+                    <div class="form-group">
+                        <label>Notes:</label>
+                        <input type="text" id="notes-${id}" placeholder="Any special instructions">
+                    </div>`;
+
+            // Operation-specific parameters
+            switch(operationType) {
+                case 'facing':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Start Diameter (mm):</label>
+                            <input type="number" id="startDiameter-${id}" name="start_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Diameter (mm):</label>
+                            <input type="number" id="endDiameter-${id}" name="end_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Feed (mm/rev):</label>
+                            <input type="number" id="feed-${id}" name="feed" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Spindle Speed (RPM):</label>
+                            <input type="number" id="spindleSpeed-${id}" name="spindle_speed" required>
+                        </div>`;
+                    break;
+
+                case 'turning':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Start Diameter (mm):</label>
+                            <input type="number" id="startDia-${id}" name="start_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Diameter (mm):</label>
+                            <input type="number" id="endDia-${id}" name="end_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Length (mm):</label>
+                            <input type="number" id="length-${id}" name="length" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Depth of Cut (mm):</label>
+                            <input type="number" id="depthOfCut-${id}" name="depth_of_cut" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Feed (mm/rev):</label>
+                            <input type="number" id="feed-${id}" name="feed" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Spindle Speed (RPM):</label>
+                            <input type="number" id="spindleSpeed-${id}" name="spindle_speed" required>
+                        </div>`;
+                    break;
+
+                case 'drilling':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Hole Depth (mm):</label>
+                            <input type="number" id="holeDepth-${id}" name="hole_depth" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Drill Feed (mm/rev):</label>
+                            <input type="number" id="feed-${id}" name="feed" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Spindle Speed (RPM):</label>
+                            <input type="number" id="spindleSpeed-${id}" name="spindle_speed" required>
+                        </div>`;
+                    break;
+
+                case 'boring':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Start Diameter (mm):</label>
+                            <input type="number" id="startDia-${id}" name="start_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Diameter (mm):</label>
+                            <input type="number" id="endDia-${id}" name="end_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Length (mm):</label>
+                            <input type="number" id="length-${id}" name="length" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Depth of Cut (mm):</label>
+                            <input type="number" id="depthOfCut-${id}" name="depth_of_cut" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Feed (mm/rev):</label>
+                            <input type="number" id="feed-${id}" name="feed" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Spindle Speed (RPM):</label>
+                            <input type="number" id="spindleSpeed-${id}" name="spindle_speed" required>
+                        </div>`;
+                    break;
+
+                case 'reaming':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Initial Hole Diameter (mm):</label>
+                            <input type="number" id="initialHole-${id}" name="initial_hole_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Reaming Depth (mm):</label>
+                            <input type="number" id="reamingDepth-${id}" name="reaming_depth" step="0.01" required>
+                        </div>`;
+                    break;
+
+                case 'threading':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Thread Diameter (mm):</label>
+                            <input type="number" id="threadDia-${id}" name="thread_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Pitch (mm):</label>
+                            <input type="number" id="pitch-${id}" name="pitch" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Length of Threads (mm):</label>
+                            <input type="number" id="threadLength-${id}" name="thread_length" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Number of Passes:</label>
+                            <input type="number" id="passes-${id}" name="passes" min="1" value="1" required>
+                        </div>`;
+                    break;
+
+                case 'grooving':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Groove Width (mm):</label>
+                            <input type="number" id="grooveWidth-${id}" name="groove_width" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Start Diameter (mm):</label>
+                            <input type="number" id="startDia-${id}" name="start_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Diameter (mm):</label>
+                            <input type="number" id="endDia-${id}" name="end_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Number of Grooves:</label>
+                            <input type="number" id="numGrooves-${id}" name="num_grooves" min="1" value="1" required>
+                        </div>`;
+                    break;
+
+                case 'parting':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Start Diameter (mm):</label>
+                            <input type="number" id="startDia-${id}" name="start_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Diameter (mm):</label>
+                            <input type="number" id="endDia-${id}" name="end_diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Part Catch Time (sec):</label>
+                            <input type="number" id="catchTime-${id}" name="catch_time" step="0.1" value="0" required>
+                        </div>`;
+                    break;
+
+                case 'knurling':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Knurling Pattern:</label>
+                            <select id="pattern-${id}" name="pattern">
+                                <option value="straight">Straight</option>
+                                <option value="diamond">Diamond</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Length (mm):</label>
+                            <input type="number" id="length-${id}" name="length" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Pitch (mm):</label>
+                            <input type="number" id="pitch-${id}" name="pitch" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Spindle Speed (RPM):</label>
+                            <input type="number" id="spindleSpeed-${id}" name="spindle_speed" required>
+                        </div>`;
+                    break;
+
+                case 'idle':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Idle Operation Type:</label>
+                            <select id="idleType-${id}" name="idle_type">
+                                <option value="tool_movement">Tool Movement</option>
+                                <option value="tool_replacement">Tool Replacement</option>
+                                <option value="reorient_workpiece">Reorient Workpiece</option>
+                                <option value="inspection">Inspection</option>
+                                <option value="load_part">Load/Unload Part</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Time (minutes):</label>
+                            <input type="number" id="idleTime-${id}" name="idle_time" step="0.1" min="0" required>
+                        </div>`;
+                    break;
+
+                case 'knurling':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Knurling Pattern:</label>
+                            <select id="pattern-${id}">
+                                <option value="straight">Straight</option>
+                                <option value="diamond">Diamond</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Length (mm):</label>
+                            <input type="number" id="length-${id}" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Pitch (mm):</label>
+                            <input type="number" id="pitch-${id}" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Spindle Speed (RPM):</label>
+                            <input type="number" id="spindleSpeed-${id}" required>
+                        </div>`;
+                    break;
+
+                case 'idle':
+                    formHTML += `
+                        <div class="form-group">
+                            <label>Idle Operation Type:</label>
+                            <select id="idleType-${id}">
+                                <option value="tool_movement">Tool Movement</option>
+                                <option value="tool_replacement">Tool Replacement</option>
+                                <option value="reorient_workpiece">Reorient Workpiece</option>
+                                <option value="inspection">Inspection</option>
+                                <option value="load_part">Load/Unload Part</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Time (minutes):</label>
+                            <input type="number" id="idleTime-${id}" step="0.1" min="0" required>
+                        </div>`;
+                    break;
+            }
+
+            formHTML += `
+                    <button type="button" onclick="removeEntry('${id}')">Remove</button>
+                    <hr>
+                </div>`;
+
+            return formHTML;
+        }
+
+        // Function to initialize the page
+        async function initializePage() {
+            try {
+                console.log('Initializing page...');
+                await Promise.all([
+                    fetchAndPopulateMaterials(),
+                    fetchAndPopulateOperations()
+                ]);
+                console.log('Materials and operations loaded successfully');
+            } catch (error) {
+                console.error('Error initializing page:', error);
+            }
+        }
+
+        // Run initialization when DOM is fully loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializePage);
+        } else {
+            initializePage();
+        }
+
+        function addProcess() {
+            const select = document.getElementById('operationSelect');
+            const selectedOption = select.options[select.selectedIndex];
+            if (!selectedOption.value) return;
+
+            const operationId = parseInt(selectedOption.value);
+            const operationName = selectedOption.text;
+
+            const container = document.getElementById('formContainer');
+            if (!container.classList.contains('form-container-active')) {
+                container.classList.add('form-container-active');
+            }
+            const entryId = `process_${processCount++}`;
+
+            let html = `<div class="process-entry" id="${entryId}" data-operation-id="${operationId}">
+                <h3>${operationName}</h3>`;
+
+            // Get the operation type from our stored operations
+            const operationType = window.operations[operationId] || operationName.toLowerCase();
+            
+            switch (operationType) {
+                case 'facing':
+                    html += `
+                        <div class="form-group">
+                            <label>Diameter (mm):</label>
+                            <input type="number" id="diameter-${entryId}" name="diameter" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Depth of Cut (mm):</label>
+                            <input type="number" id="depthOfCut-${entryId}" name="depth_of_cut" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Feed (mm/rev):</label>
+                            <input type="number" id="feed-${entryId}" name="feed" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Spindle Speed (RPM):</label>
+                            <input type="number" id="spindleSpeed-${entryId}" name="spindle_speed" required>
+                        </div>`;
+                    break;
+                case 'turning':
+                    html += `
+                        <label>Start Diameter (mm): <input type="number" name="diameter"></label>
+                        <label>End Diameter (mm): <input type="number" name="final_diameter"></label>
+                        <label>Length (mm): <input type="number" name="length"></label>`;
+                    break;
+                case 'drilling':
+                    html += `
+                        <label>Hole Depth (mm): <input type="number" name="length"></label>
+                        <label>Hole Diameter (mm): <input type="number" name="hole_diameter"></label>`;
+                    break;
+                case 'boring':
+                    html += `
+                        <label>Start Diameter (mm): <input type="number" name="diameter"></label>
+                        <label>Final Diameter (mm): <input type="number" name="final_dia"></label>
+                        <label>Length (mm): <input type="number" name="length"></label>
+                        <label>Drill Angle (°): <input type="number" name="drill_angle" value="118"></label>`;
+                    break;
+                case 'threading':
+                    html += `
+                        <label>Pitch (mm): <input type="number" name="pitch"></label>
+                        <label>Thread Length (mm): <input type="number" name="length"></label>`;
+                    break;
+                case 'knurling':
+                    html += `<label>Length (mm): <input type="number" name="length"></label>`;
+                    break;
+            }
+
+            html += `
+                <label>Time (min): <input type="text" class="time" readonly></label>
+                <button onclick="removeEntry('${entryId}')">Remove</button>
+            </div>`;
+            container.insertAdjacentHTML('beforeend', html);
+        }
+
+        function removeEntry(id) {
+            document.getElementById(id)?.remove();
+            calculateTotalTime();
+        }
+
+        async function calculateTotalTime() {
+            let cumulativeTotal = 0;
+            const entries = document.querySelectorAll('.process-entry');
+            const materialId = document.getElementById('materialSelect').value;
+
+            if (!materialId) {
+                alert('Please select a material.');
+                return;
+            }
+
+            const promises = Array.from(entries).map(entry => {
+                const timeField = entry.querySelector('.time');
+                const operationId = entry.dataset.operationId;
+
+                const inputs = entry.querySelectorAll('input[type="number"]');
+                const user_inputs = {};
+                inputs.forEach(input => {
+                    if (input.value) {
+                        user_inputs[input.name] = parseFloat(input.value);
+                    }
+                });
+
+                // Get the operation name from our stored operations
+                const operationName = window.operations[operationId] || '';
+                
+                const payload = {
+                    material_id: parseInt(materialId),
+                    operation_id: parseInt(operationId),
+                    operation_name: operationName,
+                    dimensions: user_inputs
+                };
+                
+                console.log('Sending payload:', payload);
+
+                return fetch('/api/calculate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => Promise.reject(err));
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received response:', data);
+                    if (data.status === 'success') {
+                        // Use the time from the response if available, otherwise use 0
+                        const timeValue = data.time || (data.data && data.data.total_time_minutes) || 0;
+                        timeField.value = parseFloat(timeValue).toFixed(2);
+                        cumulativeTotal += parseFloat(timeValue);
+                    } else {
+                        console.error('Error in response:', data.message || 'Unknown error');
+                        timeField.value = data.message || 'Error';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    const errorMessage = error.error || error.message || 'Error';
+                    timeField.value = errorMessage;
+                    return Promise.reject(errorMessage);
+                });
+            });
+
+            await Promise.all(promises);
+
+            const restTime = 50; // Example rest time
+            const finalTotal = cumulativeTotal + restTime;
+            document.getElementById('totalTime').innerText = finalTotal.toFixed(2);
+        }
+
+        function clearAll() {
+            document.getElementById('formContainer').innerHTML = '';
+            document.getElementById('formContainer').classList.remove('form-container-active');
+            document.getElementById('totalTime').innerText = '0';
+            processCount = 0;
+            document.getElementById('operationSelect').value = '';
+        }
+
+        function exportToPDF(type = 'shop') {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Set document properties
+            doc.setProperties({
+                title: 'Machining Route Sheet',
+                subject: 'Manufacturing Process Documentation',
+                author: 'Your Company Name',
+                keywords: 'machining, cnc, manufacturing, route sheet',
+                creator: 'Your Company Name'
+            });
+            
+            // Add company header
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('YOUR COMPANY NAME', 105, 20, { align: 'center' });
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text('123 Industrial Park, City, State 12345 | Phone: (123) 456-7890', 105, 26, { align: 'center' });
+            
+            // Document title based on export type
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            const title = type === 'shop' ? 'MACHINE SHOP ROUTE SHEET' : 'CUSTOMER QUOTATION';
+            doc.text(title, 105, 40, { align: 'center' });
+            
+            // Add date
+            const date = new Date();
+            const formattedDate = date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            // Document info table
+            const infoY = 50;
+            const infoX = 10;
+            const cellHeight = 8;
+            const col1Width = 40;
+            const col2Width = 60;
+            
+            // Draw info table borders
+            doc.setDrawColor(0);
+            doc.setLineWidth(0.2);
+            
+            // Rows
+            for (let i = 0; i <= 4; i++) {
+                const y = infoY + (i * cellHeight);
+                doc.line(infoX, y, infoX + col1Width, y);
+                doc.line(infoX + col1Width, y, infoX + col1Width + col2Width, y);
+                doc.line(infoX + col1Width + col2Width, y, infoX + col1Width + col2Width + col2Width, y);
+            }
+            
+            // Columns
+            doc.line(infoX, infoY, infoX, infoY + (4 * cellHeight));
+            doc.line(infoX + col1Width, infoY, infoX + col1Width, infoY + (4 * cellHeight));
+            doc.line(infoX + col1Width + col2Width, infoY, infoX + col1Width + col2Width, infoY + (4 * cellHeight));
+            doc.line(infoX + col1Width + col2Width + col2Width, infoY, infoX + col1Width + col2Width + col2Width, infoY + (4 * cellHeight));
+            
+            // Header cells
+            doc.setFont('helvetica', 'bold');
+            doc.text('Part No.', infoX + 5, infoY + 5);
+            doc.text('Part Name', infoX + col1Width + 5, infoY + 5);
+            doc.text('Material', infoX + col1Width + col2Width + 5, infoY + 5);
+            doc.text('Date', infoX + 5, infoY + cellHeight + 5);
+            doc.text('Dwg. No.', infoX + col1Width + 5, infoY + cellHeight + 5);
+            doc.text('Rev.', infoX + col1Width + col2Width + 5, infoY + cellHeight + 5);
+            
+            // Add operation table
+            const tableY = infoY + (4 * cellHeight) + 15;
+            const tableX = 10;
+            const tableCols = [
+                { header: 'No.', width: 10 },
+                { header: 'Operation Description', width: 70 },
+                { header: 'Dept', width: 20 },
+                { header: 'Machine', width: 30 },
+                { header: 'Tooling', width: 30 },
+                { header: 'Setup', width: 10 },
+                { header: 'Std.', width: 15 }
+            ];
+            
+            // Draw table header
+            doc.setFont('helvetica', 'bold');
+            let currentX = tableX;
+            tableCols.forEach(col => {
+                doc.rect(currentX, tableY, col.width, 10, 'S');
+                doc.text(col.header, currentX + 2, tableY + 7, { maxWidth: col.width - 4 });
+                currentX += col.width;
+            });
+            
+            // Add operations
+            doc.setFont('helvetica', 'normal');
+            const entries = document.querySelectorAll('.process-entry');
+            let rowY = tableY + 10;
+            let opNumber = 1;
+            
+            entries.forEach(entry => {
+                const opName = entry.querySelector('h3').innerText;
+                const time = entry.querySelector('.time').value || '0';
+                
+                // Get parameters
+                const inputs = entry.querySelectorAll('input[type="number"]');
+                let params = [];
+                inputs.forEach(input => {
+                    if (input.value && input.className !== 'time') {
+                        const label = input.parentElement.innerText.split(':')[0];
+                        params.push(`${label}: ${input.value}mm`);
+                    }
+                });
+
+                if (type === 'shop') {
+                    // Shop version - detailed technical information
+                    doc.rect(tableX, rowY, 10, 10, 'S');
+                    doc.text(opNumber.toString(), tableX + 5, rowY + 7, { align: 'center' });
+                    
+                    // Operation description
+                    doc.rect(tableX + 10, rowY, 70, 10, 'S');
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(opName, tableX + 12, rowY + 4, { maxWidth: 66 });
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(params.join(', '), tableX + 12, rowY + 8, { maxWidth: 66, fontSize: 7 });
+                    
+                    // Department
+                    doc.rect(tableX + 80, rowY, 20, 10, 'S');
+                    doc.text('MACH', tableX + 82, rowY + 7);
+                    
+                    // Machine
+                    doc.rect(tableX + 100, rowY, 30, 10, 'S');
+                    doc.text('CNC LATHE', tableX + 102, rowY + 7);
+                    
+                    // Tooling
+                    doc.rect(tableX + 130, rowY, 30, 10, 'S');
+                    doc.text('AS PER LIST', tableX + 132, rowY + 7, { fontSize: 7 });
+                    
+                    // Setup
+                    doc.rect(tableX + 160, rowY, 10, 10, 'S');
+                    doc.text('1', tableX + 165, rowY + 7, { align: 'center' });
+                } else {
+                    // Customer version - simplified with costs
+                    doc.rect(tableX, rowY, 10, 10, 'S');
+                    doc.text(opNumber.toString(), tableX + 5, rowY + 7, { align: 'center' });
+                    
+                    // Operation description
+                    doc.rect(tableX + 10, rowY, 90, 10, 'S');
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(opName, tableX + 12, rowY + 4, { maxWidth: 86 });
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(params.join(', '), tableX + 12, rowY + 8, { maxWidth: 86, fontSize: 7 });
+                    
+                    // Quantity
+                    doc.rect(tableX + 100, rowY, 15, 10, 'S');
+                    doc.text('1', tableX + 107.5, rowY + 7, { align: 'center' });
+                    
+                    // Unit Price
+                    doc.rect(tableX + 115, rowY, 35, 10, 'S');
+                    doc.text(`$${operationCost.toFixed(2)}`, tableX + 147.5, rowY + 7, { align: 'right' });
+                }
+                
+                // Standard time and cost calculation
+                const operationTime = parseFloat(time) || 0;
+                const operationCost = operationTime * 5; // Example: $5 per minute
+                totalCost = (totalCost || 0) + operationCost;
+                
+                if (type === 'shop') {
+                    doc.rect(tableX + 170, rowY, 15, 10, 'S');
+                    doc.text(time, tableX + 177.5, rowY + 7, { align: 'center' });
+                } else {
+                    // Customer version shows cost instead of time
+                    doc.rect(tableX + 150, rowY, 35, 10, 'S');
+                    doc.text(`$${operationCost.toFixed(2)}`, tableX + 182.5, rowY + 7, { align: 'right' });
+                }
+                
+                rowY += 10;
+                opNumber++;
+                
+                // Add page if needed
+                if (rowY > 250) {
+                    doc.addPage();
+                    rowY = 20;
+                    // Add header to new page
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('YOUR COMPANY NAME', 105, 15, { align: 'center' });
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('ROUTE SHEET (Continued)', 105, 22, { align: 'center' });
+                    doc.setFont('helvetica', 'bold');
+                    
+                    // Draw table header again
+                    currentX = tableX;
+                    tableCols.forEach(col => {
+                        doc.rect(currentX, 30, col.width, 10, 'S');
+                        doc.text(col.header, currentX + 2, 37, { maxWidth: col.width - 4 });
+                        currentX += col.width;
+                    });
+                    rowY = 40;
+                }
+            });
+            
+            // Add total section based on export type
+            doc.setFont('helvetica', 'bold');
+            
+            if (type === 'shop') {
+                // Shop version shows total time
+                doc.text('TOTAL TIME', tableX + 140, rowY + 10);
+                doc.rect(tableX + 170, rowY + 5, 15, 10, 'S');
+                doc.text(document.getElementById('totalTime').innerText, tableX + 177.5, rowY + 12, { align: 'center' });
+                
+                // Add approval section for shop version
+                const approvalY = rowY + 25;
+                doc.text('Prepared by: ______________', tableX, approvalY);
+                doc.text('Approved by: ______________', tableX + 60, approvalY);
+                doc.text('Date: ______________', tableX + 120, approvalY);
+            } else {
+                // Customer version shows total cost
+                doc.text('TOTAL COST', tableX + 140, rowY + 10);
+                doc.rect(tableX + 150, rowY + 5, 35, 10, 'S');
+                doc.text(`$${totalCost.toFixed(2)}`, tableX + 182.5, rowY + 12, { align: 'right' });
+                
+                // Add terms and conditions for customer
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(8);
+                doc.text('* This is a quotation only. Prices are subject to change based on final specifications.', 
+                    tableX, rowY + 25, { maxWidth: 180 });
+                doc.text('* Lead time: 2-3 weeks from order confirmation.', 
+                    tableX, rowY + 30, { maxWidth: 180 });
+                doc.text('* Payment terms: 50% advance, 50% before delivery.', 
+                    tableX, rowY + 35, { maxWidth: 180 });
+            }
+            
+            // Save the PDF with appropriate filename
+            const timestamp = date.getTime();
+            const filename = type === 'shop' 
+                ? `Machine_Shop_Route_Sheet_${timestamp}.pdf`
+                : `Customer_Quote_${timestamp}.pdf`;
+                
+            doc.save(filename);
+        }
+    </script>
+</body>
+</html>
