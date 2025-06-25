@@ -14,11 +14,34 @@ class BaseOperation(ABC):
         Initialize the operation with database parameters and material rating.
         
         Args:
-            db_params: Database parameters for the operation
+            db_params: Database parameters for the operation (SQLAlchemy model)
             material_rating (float): Material machinability rating (0-1)
         """
+        # Store the SQLAlchemy model for database access
         self.params = db_params
         self.material_rating = material_rating
+        
+        # Initialize database connection as None - will be created when needed
+        self.db_conn = None
+        
+        # Set default machine hour rate if not specified by subclass
+        if not hasattr(self, 'MACHINE_HOUR_RATE'):
+            self.MACHINE_HOUR_RATE = 1500  # Default value if not set by subclass
+            
+    def _get_db_connection(self):
+        """Get a database connection, creating it if necessary."""
+        if self.db_conn is None:
+            try:
+                if hasattr(self, 'params') and 'db' in self.params:
+                    # Use the db instance passed in params
+                    self.db_conn = self.params['db'].engine.raw_connection()
+                else:
+                    # Fallback to importing db directly using relative import
+                    from .. import db
+                    self.db_conn = db.engine.raw_connection()
+            except Exception as e:
+                raise RuntimeError(f"Failed to create database connection: {str(e)}")
+        return self.db_conn
     
     @abstractmethod
     def calculate(self, inputs):

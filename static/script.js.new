@@ -1,0 +1,274 @@
+let processCount = 0;
+let materials = [];
+let operations = {};  // Map operation IDs to operation names
+let operationsList = [];  // Store the full list of operations
+
+// Extra time in minutes for each operation type
+const extraTimes = {
+    'facing': 5,
+    'turning': 10,
+    'drilling': 8,
+    'boring': 12,
+    'reaming': 6,
+    'threading': 15,
+    'knurling': 7,
+    'parting': 5,
+    'grooving': 5,
+    'slabmilling': 10,
+    'facemilling': 8,
+    'endmilling': 12
+};
+
+// DOM Elements
+let materialSelect, operationSelect, formContainer;
+
+// Initialize the application
+function initApp() {
+    materialSelect = document.getElementById('materialSelect');
+    operationSelect = document.getElementById('operationSelect');
+    formContainer = document.getElementById('formContainer');
+    
+    loadMaterials();
+    loadOperations();
+}
+
+// Load materials from API
+function loadMaterials() {
+    fetch('/api/materials')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(materialsData => {
+            materials = materialsData;
+            materialSelect.innerHTML = '<option value="">Select Material</option>';
+            materials.forEach(material => {
+                const option = document.createElement('option');
+                option.value = material.id;
+                option.textContent = `${material.name} (${(material.rating * 100).toFixed(0)}% machinable)`;
+                materialSelect.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading materials:', error);
+            alert('Failed to load materials. Please check console for details.');
+        });
+}
+
+// Load operations from API
+async function loadOperations() {
+    try {
+        const response = await fetch('/api/operations');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const ops = await response.json();
+        operationsList = ops;
+        
+        operationSelect.innerHTML = '<option value="">Select Operation</option>';
+        
+        // Populate operations map and dropdown
+        ops.forEach(op => {
+            operations[op.operation_id] = op.operation_name.toLowerCase();
+            const option = new Option(op.operation_name, op.operation_id);
+            operationSelect.add(option);
+        });
+        
+        console.log("Operations loaded:", operations);
+    } catch (err) {
+        console.error("Error loading operations:", err);
+        alert('Failed to load operations. Please check console for details.');
+    }
+}
+
+// Add a new process with the selected operation
+function addProcess() {
+    const selectedOperationId = operationSelect.value;
+    const selectedOperationName = operations[selectedOperationId];
+    
+    if (!selectedOperationId || !selectedOperationName) {
+        alert("Please select a valid operation");
+        return;
+    }
+
+    const processId = 'process-' + Date.now();
+    const operationDiv = document.createElement('div');
+    operationDiv.className = 'operation-entry';
+    operationDiv.id = processId;
+    
+    // Create operation header with name and remove button
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'operation-header';
+    headerDiv.innerHTML = `
+        <h3>${selectedOperationName.charAt(0).toUpperCase() + selectedOperationName.slice(1)}</h3>
+        <button onclick="removeProcess('${processId}')" class="btn btn-danger btn-sm">
+            <i class="fas fa-times"></i> Remove
+        </button>
+    `;
+    
+    // Create form container for operation parameters
+    const formContainer = document.createElement('div');
+    formContainer.className = 'operation-form';
+    formContainer.id = `form-${processId}`;
+    
+    // Add input fields based on operation type
+    let formHTML = '';
+    switch(selectedOperationName.toLowerCase()) {
+        case 'facing':
+            formHTML = `
+                <div class="form-group">
+                    <label for="f_dia_${processId}">Initial Diameter (mm):</label>
+                    <input type="number" id="f_dia_${processId}" class="form-control" step="0.01" min="0" required>
+                </div>
+            `;
+            break;
+        case 'turning':
+            formHTML = `
+                <div class="form-group">
+                    <label for="t_len_${processId}">Length (mm):</label>
+                    <input type="number" id="t_len_${processId}" class="form-control" step="0.01" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="ti_dia_${processId}">Initial Diameter (mm):</label>
+                    <input type="number" id="ti_dia_${processId}" class="form-control" step="0.01" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="tf_dia_${processId}">Final Diameter (mm):</label>
+                    <input type="number" id="tf_dia_${processId}" class="form-control" step="0.01" min="0" required>
+                </div>
+            `;
+            break;
+        // Add more cases for other operations as needed
+        default:
+            formHTML = `
+                <div class="form-group">
+                    <p>No specific parameters required for this operation.</p>
+                </div>
+            `;
+    }
+    
+    // Add calculate button
+    formHTML += `
+        <div class="form-group">
+            <button type="button" class="btn btn-primary" onclick="calculateOperationTime('${processId}', '${selectedOperationName}')">
+                Calculate Time
+            </button>
+            <div id="result-${processId}" class="result-display"></div>
+        </div>
+    `;
+    
+    formContainer.innerHTML = formHTML;
+    
+    // Assemble the operation card
+    operationDiv.appendChild(headerDiv);
+    operationDiv.appendChild(formContainer);
+    
+    // Add hidden input for operation ID
+    const hiddenInput = document.createElement('input');
+    hiddenInput.type = 'hidden';
+    hiddenInput.name = 'operation_id';
+    hiddenInput.value = selectedOperationId;
+    operationDiv.appendChild(hiddenInput);
+    
+    // Add to the form container
+    formContainer.insertBefore(operationDiv, formContainer.firstChild);
+    
+    // Reset the operation select
+    operationSelect.value = '';
+}
+
+// Calculate operation time
+async function calculateOperationTime(processId, operationName) {
+    const materialId = materialSelect?.value;
+    const operationId = document.querySelector(`#${processId} input[name="operation_id"]`)?.value;
+    
+    if (!materialId || !operationId) {
+        alert('Please select both material and operation');
+        return;
+    }
+    
+    // Get the form container for this operation
+    const formContainer = document.getElementById(`form-${processId}`);
+    if (!formContainer) {
+        console.error('Form container not found for process:', processId);
+        return;
+    }
+    
+    // Get all input values for this operation
+    const inputs = formContainer.querySelectorAll('input[type="number"]');
+    const dimensions = {};
+    
+    inputs.forEach(input => {
+        const id = input.id.replace(`${processId}_`, '');
+        dimensions[id] = parseFloat(input.value) || 0;
+    });
+    
+    // Prepare the calculation payload
+    const payload = {
+        material_id: parseInt(materialId),
+        operation_id: parseInt(operationId),
+        operation_name: operationName.toLowerCase(),
+        dimensions: dimensions
+    };
+    
+    try {
+        const response = await fetch('/api/calculate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        // Display the result
+        const resultDiv = document.getElementById(`result-${processId}`);
+        if (resultDiv) {
+            if (result.success) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>Calculated Time:</strong> ${result.time.toFixed(2)} minutes
+                        ${result.additional_time ? `<br><small>(Including ${result.additional_time} minutes setup time)</small>` : ''}
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong>Error:</strong> ${result.error || 'Unknown error occurred'}
+                    </div>
+                `;
+            }
+        }
+        
+        return result;
+    } catch (error) {
+        console.error('Error calculating operation time:', error);
+        const resultDiv = document.getElementById(`result-${processId}`);
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> Failed to calculate operation time. Please try again.
+                </div>
+            `;
+        }
+        return { success: false, error: error.message };
+    }
+}
+
+// Remove a process
+function removeProcess(processId) {
+    const entry = document.getElementById(processId);
+    if (entry) {
+        entry.remove();
+    }
+}
+
+// Initialize the application when the DOM is loaded
+document.addEventListener('DOMContentLoaded', initApp);

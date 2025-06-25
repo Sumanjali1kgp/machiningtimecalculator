@@ -3,8 +3,12 @@ from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from machining_calculator import MachiningCalculator
 import os
+from typing import Optional, Any, Tuple, Dict, Union
 import logging
+import importlib
 from datetime import datetime
+from typing import Dict, Type, Any, Optional
+from dataclasses import dataclass
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -66,6 +70,17 @@ class MachiningParameter(db.Model):
     depth_of_cut_max = db.Column(db.Float)
     notes = db.Column(db.Text)
 
+class OperationExtraTime(db.Model):
+    __tablename__ = 'OperationExtraTimes'
+    operation_id = db.Column(db.Integer, primary_key=True)
+    setup_time_min = db.Column(db.Float, default=0.0)
+
+    def to_dict(self):
+        return {
+            'operation_id': self.operation_id,
+            'setup_time_min': self.setup_time_min
+        }
+
 # Error Handlers
 @app.errorhandler(400)
 def bad_request(error):
@@ -86,13 +101,7 @@ def get_materials():
     """Get all available materials"""
     try:
         materials = Material.query.all()
-        return jsonify([{
-            'id': m.material_id,
-            'name': m.material_name,
-            'rating': m.machinability_rating,
-            'tool': m.recommended_tool,
-            'notes': m.notes
-        } for m in materials])
+        return jsonify([mat.to_dict() for mat in materials])
     except Exception as e:
         logger.error(f"Error fetching materials: {str(e)}")
         return jsonify({'status': 'error', 'message': 'Failed to fetch materials'}), 500
@@ -102,11 +111,7 @@ def get_operations():
     """Get all available operations"""
     try:
         operations = Operation.query.all()
-        return jsonify([{
-            'id': op.operation_id,
-            'name': op.operation_name,
-            'description': op.description
-        } for op in operations])
+        return jsonify([op.to_dict() for op in operations])
     except Exception as e:
         logger.error(f"Error fetching operations: {str(e)}")
         return jsonify({'status': 'error', 'message': 'Failed to fetch operations'}), 500
@@ -133,6 +138,24 @@ def get_parameters(material_id, operation_id):
     except Exception as e:
         logger.error(f"Error fetching parameters: {str(e)}")
         return jsonify({'status': 'error', 'message': 'Failed to fetch parameters'}), 500
+
+@app.route('/get_setup_time')
+def get_setup_time():
+    operation_id = request.args.get('operation_id')
+    if not operation_id:
+        return jsonify({'error': 'No operation_id provided'}), 400
+
+    try:
+        operation_id = int(operation_id)
+        extra_time = OperationExtraTime.query.get(operation_id)
+        if extra_time and extra_time.setup_time_min is not None:
+            return jsonify({'setup_time': extra_time.setup_time_min})
+        return jsonify({'setup_time': 15.0})  # Default setup time of 15 minutes if not specified
+    except ValueError:
+        return jsonify({'error': 'Invalid operation_id'}), 400
+    except Exception as e:
+        app.logger.error(f"Error fetching setup time: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/calculate', methods=['POST'])
 def calculate():
@@ -172,14 +195,14 @@ def calculate():
         if not material:
             return jsonify({
                 'status': 'error',
-                'message': 'Material not found'
+                'message': f'Material with ID {data["material_id"]} not found in database. Please select a valid material.'
             }), 404
             
         operation = Operation.query.get(data['operation_id'])
         if not operation:
             return jsonify({
                 'status': 'error',
-                'message': 'Operation not found'
+                'message': f'Operation with ID {data["operation_id"]} not found in database.'
             }), 404
         
         # Get machining parameters
@@ -189,66 +212,110 @@ def calculate():
         ).first()
         
         if not params:
+            # Get available materials for this operation to suggest alternatives
+            available_materials = db.session.query(Material.material_name)\
+                .join(MachiningParameter, MachiningParameter.material_id == Material.material_id)\
+                .filter(MachiningParameter.operation_id == data['operation_id'])\
+                .all()
+                
+            available_materials = [m[0] for m in available_materials]
+            
+            suggestion = ''
+            if available_materials:
+                suggestion = f' Available materials for this operation: {", ".join(available_materials)}.'
+            
             return jsonify({
                 'status': 'error',
-                'message': 'No parameters found for the given material and operation'
+                'message': f'No machining parameters found for {material.material_name} with {operation.operation_name}.{suggestion}'
             }), 404
         
         # Initialize the appropriate operation class based on operation_name
         operation_name = data['operation_name'].lower()
         
-        if operation_name == 'facing':
-            from models.facing import FacingOperation
-            # Pass database connection and material ID to get default parameters
-            operation = FacingOperation(db.engine.raw_connection(), material.material_id, data['dimensions'])
-            result = operation.calculate()
+        # Dictionary mapping operation names to their respective operation classes
+        operation_classes = {
+            'facing': ('models.facing', 'FacingOperation'),
+            'turning': ('models.turning', 'TurningOperation'),
+            'drilling': ('models.drilling', 'DrillingOperation'),
+            'boring': ('models.boring', 'BoringOperation'),
+            'reaming': ('models.reaming', 'ReamingOperation'),
+            'grooving': ('models.grooving', 'GroovingOperation'),
+            'threading': ('models.threading', 'ThreadingOperation'),
+            'knurling': ('models.knurling', 'KnurlingOperation'),
+            'parting': ('models.parting', 'PartingOperation')
+        }
+        
+        # Check if we have a specialized operation class
+        if operation_name in operation_classes:
+            module_path, class_name = operation_classes[operation_name]
+            try:
+                # Dynamically import the module and get the class
+                module = __import__(module_path, fromlist=[class_name])
+                operation_class = getattr(module, class_name)
+                # Initialize and calculate
+                operation = operation_class(params, material.machinability_rating or 0.5, data['dimensions'])
+                result = operation.calculate()
+            except (ImportError, AttributeError) as e:
+                logger.error(f"Error initializing {class_name}: {str(e)}")
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to initialize {operation_name} operation',
+                    'field': 'operation'
+                }), 500
         else:
-            # For other operations, use the calculator
-            calculator = MachiningCalculator(
-                db_params=params,
-                material_rating=material.machinability_rating,
-                material_id=material.material_id
-            )
+            # Default to generic calculator for operations without a specialized class
+            calculator = MachiningCalculator(params, material.machinability_rating or 0.5)
             result = calculator.calculate_machining_parameters(
                 operation_name=operation_name,
                 user_inputs=data['dimensions']
             )
-        
+            
         if 'error' in result:
             return jsonify({
                 'status': 'error',
-                'message': result['error']
+                'message': result['error'],
+                'field': 'calculation'
             }), 400
-        
+            
         # Add metadata to result
         result.update({
             'material': material.material_name,
-            'operation': result.get('operation', operation_name),  # Use operation from result or input
+            'operation': operation_name,
             'timestamp': datetime.utcnow().isoformat(),
-            'machine_hour_rate': calculator.MACHINE_HOUR_RATE if 'calculator' in locals() else 0
-        })
-        
+            'machine_hour_rate': getattr(calculator, 'MACHINE_HOUR_RATE', 0) if 'calculator' in locals() else 0
+            })
+            
         # Return the time in the format expected by the frontend
         time_value = result.get('total_time_minutes', 0)
-        logger.info(f"Calculation result: {result}")
+        logger.info(f"Calculation successful: {result}")
+            
         return jsonify({
             'status': 'success',
             'time': time_value,
             'data': result
-        })
-        
+            })
+            
     except Exception as e:
         logger.error(f"Error in calculation: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'error',
-            'message': 'An error occurred during calculation',
-            'details': str(e)
+            'message': f'Calculation error: {str(e)}',
+            'field': 'calculation'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error processing calculation request: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'An error occurred while processing your request: {str(e)}',
+            'field': 'server_error'
         }), 500
+    
 
 # Frontend Routes
 @app.route('/')
 def index():
-    return render_template('project.html')
+    return render_template('index.html')
 
 @app.route('/lathe')
 def lathe():

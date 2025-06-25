@@ -526,15 +526,14 @@ function clearAll() {
         actionButtons.style.display = 'none';
     }
     
-    // Reset time and cost display
+    // Reset time display
     document.getElementById('totalTime').textContent = '0.00';
-    document.getElementById('totalCost').textContent = '0.00';
     
-    // Reset other display fields
+    // Reset all time and cost fields
     const displayFields = [
-        'setupTime', 'machiningTime', 'toolTime',
+        'setupTime', 'machiningTime', 'toolTime', 'miscTime',
         'materialCost', 'setupCost', 'nonProductiveCost',
-        'machiningCost', 'toolingCost'
+        'machiningCost', 'toolingCost', 'totalCost', 'estimatedCost'
     ];
     
     displayFields.forEach(field => {
@@ -683,21 +682,164 @@ function updateMiscTime() {
 }
 
 
-// Cost calculation functions will be available via window.CostCalculator
-// after cost.js is loaded in the HTML
-
 // Cache for setup times to avoid redundant API calls
 const setupTimeCache = new Map();
 
+// Centralized function to show/hide UI sections
+function updateUISections(show = true) {
+    const sections = ['timeCostSection', 'costEstimationSection']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+    
+    sections.forEach(section => {
+        section.classList.toggle('visible', show);
+    });
+}
+
+/**
+ * Updates the UI with calculation results from the backend
+ * @param {Object} data - The response data from the backend
+ */
+function updateResultsUI(data) {
+    // Show sections
+    const timeCostSection = document.getElementById('timeCostSection');
+    const costEstimationSection = document.getElementById('costEstimationSection');
+    timeCostSection?.classList.add('visible');
+    costEstimationSection?.classList.add('visible');
+
+    // Update time fields
+    const timeFields = {
+        'setupTime': data.total_setup_time || 0,
+        'idleTime': data.total_idle_time || 0,
+        'machiningTime': data.total_machining_time || 0,
+        'toolTime': data.total_tool_time || 0,
+        'miscTime': data.misc_time || 0,
+        'totalTime': data.total_time || 0
+    };
+
+    // Update cost fields
+    const costFields = {
+        'materialCost': data.material_cost || 0,
+        'setupCost': data.setup_cost || 0,
+        'nonProductiveCost': data.non_productive_cost || 0,
+        'machiningCost': data.machining_cost || 0,
+        'toolingCost': data.tooling_cost || 0,
+        'setupIdleCost': data.setup_idle_cost || 0, // Sum of setup + idle costs
+        'totalCost': data.total_cost || 0,
+        'estimatedCost': data.estimated_cost || data.total_cost || 0
+    };
+
+    // Update time fields in UI
+    Object.entries(timeFields).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = parseFloat(value).toFixed(2);
+        }
+    });
+
+    // Update cost fields in UI
+    Object.entries(costFields).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = parseFloat(value).toFixed(2);
+        }
+    });
+}
+
+// Function to fetch cost calculation from backend
+async function fetchCostCalculation() {
+    try {
+        // Gather all operation data
+        const operations = [];
+        let totalMachiningTime = 0;
+        let totalSetupTime = 0;
+        let totalIdleTime = 0;
+        let totalToolTime = 0;
+
+        // Collect operation data and calculate times
+        document.querySelectorAll('.operation-entry').forEach(entry => {
+            const timeInput = entry.querySelector('input[type="number"][id$="_time"]');
+            const idleInput = entry.querySelector('input[type="number"][id$="_idle_time"]');
+            const toolInput = entry.querySelector('input[type="number"][id$="_tool_time"]');
+            
+            const opTime = parseFloat(timeInput?.value) || 0;
+            const idleTime = parseFloat(idleInput?.value) || 0;
+            const toolTime = parseFloat(toolInput?.value) || 0;
+            
+            operations.push({
+                operation_id: entry.dataset.operationId,
+                operation_time: opTime,
+                idle_time: idleTime,
+                tool_time: toolTime
+            });
+            
+            totalMachiningTime += opTime;
+            totalIdleTime += idleTime;
+            totalToolTime += toolTime;
+        });
+
+        // Get material ID and other global inputs
+        const materialId = document.getElementById('materialSelect')?.value;
+        const miscTime = parseFloat(document.getElementById('miscInput')?.value) || 0;
+        
+        if (!materialId) {
+            throw new Error('Please select a material before calculating costs');
+        }
+
+        // Prepare payload for the backend
+        const payload = {
+            material_id: materialId,
+            operations: operations,
+            total_machining_time: totalMachiningTime,
+            total_setup_time: totalSetupTime,
+            total_idle_time: totalIdleTime,
+            total_tool_time: totalToolTime,
+            misc_time: miscTime
+        };
+
+        console.log('Sending calculation request:', payload);
+        
+        const response = await fetch('/calculate_cost', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('Calculation result:', result);
+        
+        // Update the UI with the complete result
+        updateResultsUI({
+            ...result,
+            total_machining_time: totalMachiningTime,
+            total_setup_time: totalSetupTime,
+            total_idle_time: totalIdleTime,
+            total_tool_time: totalToolTime,
+            misc_time: miscTime,
+            total_time: totalMachiningTime + totalSetupTime + totalIdleTime + totalToolTime + miscTime
+        });
+        
+        return result;
+    } catch (error) {
+        console.error('Error in cost calculation:', error);
+        alert(`Error calculating costs: ${error.message}`);
+        throw error;
+    }
+}
+
 async function calculateTotalTime() {
-    // Get operation entries and time section
+    // Get operation entries and sections
     const operationEntries = document.querySelectorAll('.operation-entry');
     const timeCostSection = document.getElementById('timeCostSection');
+    const costEstimationSection = document.getElementById('costEstimationSection');
     
-    // Hide time section by default
-    if (timeCostSection) {
-        timeCostSection.classList.remove('visible');
-    }
+    // Hide sections by default
+    updateUISections(false);
     
     // Return early if no operations
     if (operationEntries.length === 0) {
@@ -790,22 +932,15 @@ async function calculateTotalTime() {
     // Total time calculation
     const totalTime = totalMachiningTime + totalIdleTime + totalToolTime + totalSetupTime + miscTime;
 
-    // Calculate material weight (simplified - would need part dimensions from UI)
-    // For now using a placeholder, you'll need to implement actual calculation based on part geometry
-    function calculateMaterialWeight() {
-        // TODO: Implement actual material weight calculation based on part dimensions
-        // This is a placeholder that returns a default weight
-        return 0.5; // kg
-    }
-    
-    const materialWeight = calculateMaterialWeight();
-    
+    // Material weight calculation will be handled by the backend
+    const materialWeight = 0; // Will be set by backend
+
     // Update Time UI
     const updateIfExists = (id, value, formatter = v => v) => {
         const element = document.getElementById(id);
         if (element) element.textContent = formatter(value);
     };
-
+    
     updateIfExists('machiningTime', totalMachiningTime, v => v.toFixed(2));
     updateIfExists('idleTime', totalIdleTime, v => v.toFixed(2));
     updateIfExists('setupTime', totalSetupTime, v => v.toFixed(2));
@@ -813,56 +948,15 @@ async function calculateTotalTime() {
     updateIfExists('miscTime', miscTime, v => v.toFixed(2));
     updateIfExists('totalTime', totalTime, v => v.toFixed(2));
     
-    // Calculate and update costs if CostCalculator is available
-    let materialCost = 0;
-    let laborCost = 0;
-    let machineCost = 0;
-    let totalCost = 0;
-
-    if (window.CostCalculator) {
-        try {
-            // Get the selected material for cost calculation
-            const materialSelect = document.getElementById('materialSelect');
-            const materialType = materialSelect?.options[materialSelect?.selectedIndex]?.text.toLowerCase() || 'steel';
-            
-            // Calculate material volume (simplified - would need actual part dimensions)
-            const materialVolume = 1000; // Placeholder for material volume in mm³
-            
-            // Calculate costs using CostCalculator
-            materialCost = window.CostCalculator.calculateMaterialCost(materialVolume, materialType);
-            laborCost = window.CostCalculator.calculateLaborCost(totalMachiningTime);
-            machineCost = window.CostCalculator.calculateMachineCost(totalMachiningTime);
-            
-            // Get total costs with overhead and profit
-            const costs = window.CostCalculator.calculateTotalCost({
-                material: materialCost,
-                labor: laborCost,
-                machine: machineCost
-            });
-            
-            totalCost = costs.total;
-            
-            // Update the cost UI
-            window.CostCalculator.updateCostUI(costs);
-            
-            // Show the cost section
-            const costSection = document.getElementById('costEstimationSection');
-            if (costSection) {
-                costSection.style.display = 'block';
-            }
-        } catch (error) {
-            console.error('Error in cost calculation:', error);
-        }
+    // Trigger cost calculation which will also update the UI
+    try {
+        await fetchCostCalculation();
+    } catch (error) {
+        console.error('Error in cost calculation:', error);
     }
-
-    // Show both sections after all calculations are done
-    [timeCostSection, costEstimationSection].forEach(section => {
-        if (section) section.classList.add('visible');
-    });
 
     return {
         totalTime,
-        totalCost: window.CostCalculator.getTotalCost(),
         breakdown: {
             times: {
                 machining: totalMachiningTime,
@@ -871,18 +965,23 @@ async function calculateTotalTime() {
                 tool: totalToolTime,
                 misc: miscTime,
                 total: totalTime
-            },
-            costs: {
-                material: materialCost, 
-                timeBased: laborCost + machineCost,
-                tooling: 0,
-                fixed: 0,
-                total: window.CostCalculator.getTotalCost()
             }
         }
     };
 }
 
+// Cost calculation is handled by the backend API via /calculate_cost endpoint
+// The backend returns all cost-related calculations in the format:
+// {
+//   material_cost: number,
+//   setup_cost: number,
+//   non_productive_cost: number,
+//   machining_cost: number,
+//   tooling_cost: number,
+//   setup_idle_cost: number,  // Sum of setup + idle costs
+//   total_cost: number,
+//   estimated_cost: number    // Same as total_cost by default
+// }
 
 // Validate form before calculation
 function validateOperationForm(processId, operationType) {
