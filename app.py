@@ -70,16 +70,6 @@ class MachiningParameter(db.Model):
     depth_of_cut_max = db.Column(db.Float)
     notes = db.Column(db.Text)
 
-class OperationExtraTime(db.Model):
-    __tablename__ = 'OperationExtraTimes'
-    operation_id = db.Column(db.Integer, primary_key=True)
-    setup_time_min = db.Column(db.Float, default=0.0)
-
-    def to_dict(self):
-        return {
-            'operation_id': self.operation_id,
-            'setup_time_min': self.setup_time_min
-        }
 
 # Error Handlers
 @app.errorhandler(400)
@@ -138,24 +128,6 @@ def get_parameters(material_id, operation_id):
     except Exception as e:
         logger.error(f"Error fetching parameters: {str(e)}")
         return jsonify({'status': 'error', 'message': 'Failed to fetch parameters'}), 500
-
-@app.route('/get_setup_time')
-def get_setup_time():
-    operation_id = request.args.get('operation_id')
-    if not operation_id:
-        return jsonify({'error': 'No operation_id provided'}), 400
-
-    try:
-        operation_id = int(operation_id)
-        extra_time = OperationExtraTime.query.get(operation_id)
-        if extra_time and extra_time.setup_time_min is not None:
-            return jsonify({'setup_time': extra_time.setup_time_min})
-        return jsonify({'setup_time': 15.0})  # Default setup time of 15 minutes if not specified
-    except ValueError:
-        return jsonify({'error': 'Invalid operation_id'}), 400
-    except Exception as e:
-        app.logger.error(f"Error fetching setup time: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/calculate', methods=['POST'])
 def calculate():

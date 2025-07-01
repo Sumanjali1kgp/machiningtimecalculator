@@ -1,30 +1,305 @@
-// Global variables
-let materials = [];
-let operations = {};  // Map operation IDs to operation names
-let processCount = 0;
-let materialSelect, operationSelect, formContainer, operationList, addProcessBtn;
+// script.js - Main application script for the Machining Time Calculator
 
-// Global functions
-function removeEntry(id) {
-    const entry = document.getElementById(id);
-    if (entry) {
-        entry.remove();
-        calculateTotalTime();
+// Global variables
+let operations = [];
+let materials = [];
+let currentOperationId = 0;
+let currentOperationType = '';
+let processCount = 0;
+let formContainer, addProcessBtn;
+let operationList; // Declare operationList as a global variable
+
+// These will be set by the module loader in lathe.html
+let calculateAndDisplayTimes, updateToolTime, updateMiscTime, updateSetupTime, calculateOperationTime, calculateAndDisplayCosts;
+
+// Wait for the window to be fully loaded
+window.addEventListener('load', () => {
+    // These will be available after the modules are loaded
+    calculateAndDisplayTimes = window.calculateAndDisplayTimes;
+    updateToolTime = window.updateToolTime;
+    updateMiscTime = window.updateMiscTime;
+    updateSetupTime = window.updateSetupTime;
+    calculateOperationTime = window.calculateOperationTime;
+    calculateAndDisplayCosts = window.calculateAndDisplayCosts;
+    
+    console.log('Global functions initialized in script.js');
+});
+
+// Helper function to update UI elements if they exist
+function updateIfExists(id, value, formatter = v => v) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.textContent = formatter(value);
     }
 }
 
-document.addEventListener('DOMContentLoaded', initApp);
 
+document.addEventListener('DOMContentLoaded', () => {
+    initApp();
+    
+    // Toggle between time and cost sections
+    const calculateTimeBtn = document.getElementById('calculateTimeBtn');
+    const calculateCostBtn = document.getElementById('calculateCostBtn');
+    const timeSection = document.getElementById('timeSection');
+    const costSection = document.getElementById('costDetailsSection');
+    
+    if (calculateTimeBtn && timeSection) {
+        // Remove any existing event listeners
+        const newTimeBtn = calculateTimeBtn.cloneNode(true);
+        calculateTimeBtn.parentNode.replaceChild(newTimeBtn, calculateTimeBtn);
+        
+        // Add new click handler
+        newTimeBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Calculate Time button clicked');
+            
+            // Debug: Log current state
+            console.log('Time section before show:', {
+                display: timeSection.style.display,
+                classList: timeSection.className,
+                hidden: timeSection.hidden,
+                offsetParent: timeSection.offsetParent,
+                clientHeight: timeSection.clientHeight,
+                scrollHeight: timeSection.scrollHeight
+            });
+            
+            // Show the time section
+            timeSection.classList.remove('hidden');
+            timeSection.style.display = 'block';
+            
+            // Hide the cost section if it exists
+            if (costSection) {
+                costSection.classList.add('hidden');
+                costSection.style.display = 'none';
+            }
+            
+            // Force a reflow to ensure the UI updates
+            void timeSection.offsetHeight;
+            
+            console.log('Time section after show:', {
+                display: timeSection.style.display,
+                classList: timeSection.className,
+                hidden: timeSection.hidden,
+                offsetParent: timeSection.offsetParent,
+                clientHeight: timeSection.clientHeight,
+                scrollHeight: timeSection.scrollHeight
+            });
+            
+            try {
+                console.log('Calling calculateAndDisplayTimes...');
+                const result = await calculateAndDisplayTimes();
+                console.log('calculateAndDisplayTimes completed with result:', result);
+                
+                // Force another reflow after calculation
+                void timeSection.offsetHeight;
+                
+                console.log('Time section after calculation:', {
+                    display: timeSection.style.display,
+                    classList: timeSection.className,
+                    hidden: timeSection.hidden,
+                    offsetParent: timeSection.offsetParent,
+                    clientHeight: timeSection.clientHeight,
+                    scrollHeight: timeSection.scrollHeight
+                });
+                
+                // Scroll to the time section
+                timeSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                console.error('Error in calculateAndDisplayTimes:', error);
+            }
+        });
+    }
+    
+    if (calculateCostBtn && costSection) {
+        calculateCostBtn.addEventListener('click', () => {
+            costSection.classList.remove('hidden');
+            if (timeSection) timeSection.classList.add('hidden');
+            calculateAndDisplayCosts();
+        });
+    }
+    
+    // Sidebar drawer universal toggle
+    const hamburger = document.getElementById('hamburger');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarClose = document.getElementById('sidebarClose');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    
+    function openSidebar() {
+        sidebar.classList.add('active');
+        sidebarOverlay.classList.add('active');
+    }
+    function closeSidebar() {
+        sidebar.classList.remove('active');
+        sidebarOverlay.classList.remove('active');
+    }
+    if (hamburger) {
+        hamburger.addEventListener('click', openSidebar);
+    }
+    if (sidebarClose) {
+        sidebarClose.addEventListener('click', closeSidebar);
+    }
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', closeSidebar);
+    }
+});
+
+// ============================ INITIALIZATION ============================
+
+/**
+ * Initialize the application
+ * - Sets up UI elements
+ * - Initializes event listeners
+ * - Loads initial data
+ */
 async function initApp() {
-    materialSelect = document.getElementById('materialSelect');
-    operationSelect = document.getElementById('operationSelect');
+    // Initialize UI elements
+    const materialSelect = document.getElementById('materialSelect');
+    const operationSelect = document.getElementById('operationSelect');
     formContainer = document.getElementById('formContainer');
     operationList = document.getElementById('operationList');
+    
+    if (!operationList) {
+        console.error('Operation list container not found in the DOM');
+    }
+    
+    // Set up event listeners for form elements
+    if (materialSelect) materialSelect.addEventListener('change', onMaterialSelected);
+    if (operationSelect) operationSelect.addEventListener('change', addProcess);
+    
+    // Initialize sections as hidden
+    const timeSectionEl = document.getElementById('timeSection');
+    const costSectionEl = document.getElementById('costSection');
+    
+    if (timeSectionEl) {
+        timeSectionEl.style.display = 'none';
+        timeSectionEl.classList.add('hidden');
+    }
+    
+    if (costSectionEl) {
+        costSectionEl.style.display = 'none';
+        costSectionEl.classList.add('hidden');
+    }
+    
+    // Load data asynchronously
+    await Promise.all([
+        fetchAndPopulateMaterials(),
+        fetchAndPopulateOperations()
+    ]);
+    
+    // Set up button event listeners
+    const setupCalculateButtons = () => {
+        console.log('Setting up calculate buttons...');
+        
+        // Ensure time section is hidden by default
+        const timeSection = document.getElementById('timeSection');
+        if (timeSection) {
+            timeSection.classList.add('hidden');
+            console.log('Time section hidden by default');
+        }
 
-    materialSelect.addEventListener('change', onMaterialSelected);
-    operationSelect.addEventListener('change', addProcess);
-
-    await Promise.all([fetchAndPopulateMaterials(), fetchAndPopulateOperations()]);
+        // Time calculation button
+        const calculateTimeBtn = document.getElementById('calculateTimeBtn');
+        if (calculateTimeBtn) {
+            console.log('Setting up calculateTimeBtn event listener');
+            
+            // Remove any existing event listeners
+            const newBtn = calculateTimeBtn.cloneNode(true);
+            calculateTimeBtn.parentNode.replaceChild(newBtn, calculateTimeBtn);
+            
+            // Add new event listener
+            newBtn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Calculate Time button clicked');
+                console.log('Calculate Time button clicked');
+                try {
+                    // Show the time section
+                    const timeSection = document.getElementById('timeSection');
+                    if (timeSection) {
+                        // Make sure the section is visible
+                        timeSection.style.display = 'block';
+                        timeSection.classList.remove('hidden');
+                        
+                        console.log('Calculating and displaying times...');
+                        // Calculate and display times
+                        const results = await calculateAndDisplayTimes();
+                        console.log('Calculation results:', results);
+                        
+                        // Force UI update
+                        document.body.style.visibility = 'hidden';
+                        document.body.offsetHeight; // Trigger reflow
+                        document.body.style.visibility = 'visible';
+                        
+                        // Scroll to the time section
+                        console.log('Scrolling to time section...');
+                        timeSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                } catch (error) {
+                    console.error('Error in calculate time button click:', error);
+                }
+            });
+        } else {
+            console.warn('calculateTimeBtn not found in the DOM');
+        }
+        
+        // Cost calculation button
+        const calculateCostBtn = document.getElementById('calculateCostBtn');
+        if (calculateCostBtn) {
+            console.log('Found calculateCostBtn, adding event listener');
+            // Remove any existing event listeners to prevent duplicates
+            calculateCostBtn.replaceWith(calculateCostBtn.cloneNode(true));
+            document.getElementById('calculateCostBtn').addEventListener('click', async () => {
+                console.log('Calculate Cost button clicked');
+                try {
+                    toggleSection('costSection', true);
+                    console.log('Calculating and displaying costs...');
+                    await calculateAndDisplayCosts();
+                } catch (error) {
+                    console.error('Error in calculate cost button click:', error);
+                }
+            });
+        } else {
+            console.warn('calculateCostBtn not found in the DOM');
+        }
+    };
+    
+    // Set up the clear all button
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', clearAll);
+    }
+    
+    // Show the time section by default when the page loads
+    const timeSection = document.getElementById('timeSection');
+    if (timeSection) {
+        timeSection.style.display = ''; // Reset any inline display style
+        timeSection.classList.remove('hidden');
+    }
+    
+    // Hide the cost section by default
+    const costSection = document.getElementById('costDetailsSection');
+    if (costSection) {
+        costSection.style.display = 'none'; // Explicitly hide with inline style
+        costSection.classList.add('hidden');
+    }
+    
+    // Initialize the calculate buttons
+    setupCalculateButtons();
+    
+    // Also set up a small delay to ensure DOM is fully loaded
+    setTimeout(() => {
+        setupCalculateButtons();
+        // Re-ensure visibility after potential async operations
+        if (timeSection) {
+            timeSection.style.display = '';
+            timeSection.classList.remove('hidden');
+        }
+    }, 500);
+    
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', clearAll);
+    }
 }
 
 // Operation display names
@@ -51,7 +326,6 @@ function formatNumber(num, decimals = 2) {
     if (num === null || num === undefined) return 'N/A';
     return typeof num === 'number' ? num.toFixed(decimals) : num;
 }
-
 
 // Fetch and populate materials from API
 async function fetchAndPopulateMaterials() {
@@ -85,14 +359,18 @@ async function fetchAndPopulateOperations() {
         data.forEach(op => {
             if (op && op.operation_id) {
                 const option = new Option(op.operation_name, op.operation_id);
+                // Store the operation type in a data attribute for easy access
+                option.dataset.type = op.operation_name.toLowerCase().replace(/\s+/g, '');
                 operationSelect.add(option);
                 operations[op.operation_id] = op.operation_name.toLowerCase();
             }
         });
     } catch (error) {
+        console.error('Error loading operations:', error);
         loadDefaultOperations();
     }
 }
+
 // Load default operations if API fails
 function loadDefaultOperations() {
     const defaultOperations = [
@@ -118,15 +396,21 @@ function loadDefaultOperations() {
 
 // Validate that a material is selected
 function onMaterialSelected() {
-    const selectedMaterial = materialSelect.value;
+    const selectedMaterial = materialSelect?.value;
     const errorElement = document.getElementById('materialError');
 
     if (!selectedMaterial) {
-        errorElement.textContent = 'Please select a material';
+        if (errorElement) {
+            errorElement.textContent = 'Please select a material';
+        } else {
+            console.error('Material error element not found');
+        }
         return false;
     }
 
-    errorElement.textContent = '';
+    if (errorElement) {
+        errorElement.textContent = '';
+    }
     return true;
 }
 
@@ -146,130 +430,156 @@ function updateMaterial(processId, materialId) {
 
 // Add a new process entry to the list
 function addProcess() {
-    console.log('addProcess called');
-
-    if (!operationSelect) {
-        console.error('Operation select element not found');
+    // Get the current values directly from the DOM
+    const materialSelect = document.getElementById('materialSelect');
+    const operationSelect = document.getElementById('operationSelect');
+    
+    if (!materialSelect || !operationSelect) {
+        console.error('Required elements not found in the DOM');
         return;
     }
-
+    
+    const materialId = materialSelect.value;
+    const operationId = operationSelect.value;
+    
+    if (!materialId) {
+        alert('Please select a material first');
+        return;
+    }
+    
+    if (!operationId) {
+        alert('Please select an operation');
+        return;
+    }
+    
+    // Get the selected option and its data
     const selectedOption = operationSelect.options[operationSelect.selectedIndex];
-    if (!selectedOption || !selectedOption.value) {
-        alert('Please select an operation first.');
-        return;
-    }
-
-    // Get operation info
-    const operationName = selectedOption.text.trim();
-    const operationId = operationSelect.value; // Get the selected operation ID
-    const operationType = operations[operationId] || operationName.toLowerCase();
     
-    // Create simple process ID using just the operation ID
-    const processId = `process_${operationId}`;
-    
-    // Remove any existing process with the same operation ID
-    const existingProcess = document.getElementById(processId);
-    if (existingProcess) {
-        existingProcess.remove();
+    // Get the operation type from the data-type attribute or fallback to the text content
+    let operationType = selectedOption.getAttribute('data-type');
+    if (!operationType) {
+        // If no data-type, use the text content and clean it up
+        operationType = selectedOption.textContent.trim().toLowerCase().replace(/\s+/g, '');
+        // Update the data-type for future reference
+        selectedOption.setAttribute('data-type', operationType);
     }
     
-    console.log(`Adding process: ${operationName} (${operationType}), Operation ID: ${operationId}`);
+    // Create a unique ID for this process entry
+    const timestamp = Date.now();
+    const processId = `process_${operationId}_${timestamp}`;
+    
+    // Get the selected material
+    const selectedMaterial = materialSelect.options[materialSelect.selectedIndex];
+    
+    console.log('Adding operation:', { 
+        operationid: operationId, 
+        operationname: selectedOption.textContent,
+        materialid: materialId,
+        materialname: selectedMaterial ? selectedMaterial.textContent : 'Not selected'
+    });
+    
+    // Get the display name for the operation
+    const operationName = operationDisplayNames[operationType] || operationType;
+    
+    // Create the process entry HTML
+    const processHTML = `
+        <div class="process-entry" id="${processId}" 
+             data-operation-type="${operationType}"
+             data-operation-id="${operationId}"
+             data-material-id="${materialId}">
+            <div class="process-header">
+                <h4>${operationName}</h4>
+                <button class="btn-remove" onclick="removeEntry('${processId}')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="process-form">
+                ${generateOperationForm(processId, operationType)}
+            </div>
+        </div>`;
 
-    // Create container for the operation entry
-    const operationEntry = document.createElement('div');
-    operationEntry.className = 'operation-entry';
-    operationEntry.id = processId;
-    operationEntry.dataset.operationType = operationType;
-    operationEntry.dataset.operationId = operationId;
-
-    // Header with title and remove button
-    const header = document.createElement('div');
-    header.className = 'operation-header';
-    header.innerHTML = `
-        <h3>${operationName} Operation</h3>
-        <button class="btn-remove" onclick="removeEntry('${processId}')" title="Remove process">
-            <i class="fas fa-times"></i>
-        </button>
-    `;
-
-    // Form container
-    const form = document.createElement('div');
-    form.className = 'operation-form';
-
-    // Generate operation-specific inputs
-    const formHTML = generateOperationForm(operationType, processId);
-    if (!formHTML) {
-        console.error('No form template found for operation type:', operationType);
-        return;
-    }
-    form.innerHTML = formHTML;
-
-    // Assemble the new entry
-    operationEntry.appendChild(header);
-    operationEntry.appendChild(form);
-
-    // Append to the operation list
-    if (!operationList) {
-        operationList = document.getElementById('operationList');
-        if (!operationList) {
-            console.error('Operation list container not found');
-            return;
+    // Create a container div for the process entry
+    const processEntry = document.createElement('div');
+    processEntry.className = 'process-entry';
+    processEntry.id = processId;
+    processEntry.dataset.operationId = operationId;
+    processEntry.dataset.materialId = materialId;
+    processEntry.innerHTML = processHTML;
+    
+    // Add the process to the operation list
+    if (operationList) {
+        operationList.appendChild(processEntry);
+        
+        // Initialize the time input
+        const timeInput = document.getElementById(`${processId}_time`);
+        if (timeInput) {
+            timeInput.addEventListener('input', () => {
+                console.log(`Time input ${processId} changed:`, timeInput.value);
+                calculateAndDisplayTimes();
+            });
         }
+    } else {
+        console.error('Operation list container not found');
+        return;
     }
-    operationList.appendChild(operationEntry);
-
+    
+    // Reset the operation select
+    if (operationSelect) {
+        operationSelect.value = '';
+    }
+    
+    // Show the time section when a process is added
+    toggleSection('timeSection', true);
+    
+    // Recalculate times
+    calculateAndDisplayTimes();
+    
     // Show action buttons if this is the first process
     const actionButtons = document.querySelector('.action-buttons');    
     if (actionButtons && actionButtons.style.display === 'none') {
         actionButtons.style.display = 'block';
     }
 
-    // Reset the select dropdown
-    operationSelect.selectedIndex = 0;
-
-    // Scroll to the new process for better UX
-    operationEntry.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
     console.log('Process successfully added.');
 }
 
 /**
  * Generate form HTML based on operation type
+ * @param {string} operationId - The ID of the operation
  * @param {string} operationType - The type of operation (e.g., 'facing', 'turning')
- * @param {string} entryId - Unique ID for the form elements
  * @returns {string} HTML string for the operation form
  */
-function generateOperationForm(operationType, entryId) {
+function generateOperationForm(operationId, operationType) {
     if (!operationType) {
         console.error('No operation type provided');
         return '';
     }
-    
-    // Convert to lowercase for case-insensitive comparison
+
+    // Use the provided operationId which already has the format 'process_X'
+    const entryId = operationId;
     const opType = operationType.toLowerCase();
     
+    // Helper function to create form groups
+    const formGroup = (label, name, opts = {}) => {
+        const { 
+            type = 'text',
+            step = '',
+            min = '',
+            value = '',
+            required = true,
+            options = []
+        } = opts;
+        const inputId = `${entryId}_${name}`;
 
-   // Updated formGroup helper
-const formGroup = (label, name, opts = {}) => {
-    const { 
-      type = 'text',
-      step = '',
-      min = '',
-      value = '',
-      required = true,
-      options = []
-    } = opts;
-    const inputId = `${entryId}_${name}`;
-
-    let input = '';
-    if (type === 'select') {
-        const optionTags = options
-            .map(opt => `<option value="${opt.value}">${opt.text || opt.label || opt.value}</option>`)
-            .join('');
-        input = `
-          <select class="form-control" id="${inputId}" name="${name}" ${required ? 'required' : ''}>
-              <option value="">-- Select --</option>${optionTags}
-          </select>`;
+        let input = '';
+        if (type === 'select') {
+            const optionTags = options
+                .map(opt => `<option value="${opt.value}">${opt.text || opt.label || opt.value}</option>`)
+                .join('');
+            input = `
+              <select class="form-control" id="${inputId}" name="${name}" ${required ? 'required' : ''}>
+                  <option value="">-- Select --</option>${optionTags}
+              </select>`;
     } else {
         input = `
           <input type="${type}"
@@ -304,11 +614,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'facing')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'turning': () => [
@@ -324,11 +639,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'turning')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'drilling': () => [
@@ -342,11 +662,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'drilling')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'reaming': () => [
@@ -360,11 +685,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'reaming')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'boring': () => [
@@ -379,11 +709,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'boring')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'threading': () => [
@@ -397,11 +732,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'threading')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'grooving': () => [
@@ -415,11 +755,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'grooving')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'parting': () => [
@@ -433,11 +778,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'parting')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'knurling': () => [
@@ -451,11 +801,16 @@ const formGroup = (label, name, opts = {}) => {
                         onclick="calculateOperationTime('${entryId}', 'knurling')">
                     <i class="fas fa-calculator"></i> Calculate Time
                 </button>
-                <input id="${entryId}_time" 
-                       type="text" 
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50" 
-                       placeholder="Time (minutes)" 
-                       readonly>
+                <div class="form-group">
+                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                    <input id="${entryId}_time" 
+                           type="number" 
+                           class="form-control" 
+                           placeholder="Enter time in minutes" 
+                           step="0.01"
+                           min="0"
+                           onchange="calculateAndDisplayTimes()">
+                </div>
             </div>`
         ].join(''),
         'idle': () => [
@@ -506,561 +861,149 @@ const formGroup = (label, name, opts = {}) => {
     }
 }
     
-function removeElement(elementOrId) {
-    const element = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
-    if (element) element.remove();
-    if (typeof calculateTotalTime === 'function') calculateTotalTime();
-}
-// Clear all operations
-function clearAll() {
-    // Clear operation list
-    operationList.innerHTML = '';
-    
-    // Reset form
-    if (materialSelect) materialSelect.value = '';
-    if (operationSelect) operationSelect.value = '';
-    
-    // Hide action buttons
-    const actionButtons = document.querySelector('.action-buttons');
-    if (actionButtons) {
-        actionButtons.style.display = 'none';
+// ============================ UTILITY FUNCTIONS ============================
+
+// Remove an operation entry
+function removeEntry(entryId) {
+    const entry = document.getElementById(entryId);
+    if (entry) {
+        entry.remove();
+        // Trigger recalculations
+        calculateAndDisplayTimes();
+        calculateAndDisplayCosts();
     }
+}
+
+function clearAll() {
+    const operationList = document.getElementById('operationList');
+    if (operationList) operationList.innerHTML = '';
     
-    // Reset time and cost display
-    document.getElementById('totalTime').textContent = '0.00';
-    document.getElementById('totalCost').textContent = '0.00';
+    // Reset form fields
+    const materialSelect = document.getElementById('materialSelect');
+    if (materialSelect) materialSelect.value = '';
     
-    // Reset other display fields
+    // Reset displayed values
     const displayFields = [
-        'setupTime', 'machiningTime', 'toolTime',
-        'materialCost', 'setupCost', 'nonProductiveCost',
-        'machiningCost', 'toolingCost'
+        'machiningTime', 'idleTime', 'setupTime', 'toolTime', 'miscTime', 'totalTime',
+        'materialCost', 'timeBasedCost', 'toolingCost', 'fixedCost', 'totalCost'
     ];
     
-    displayFields.forEach(field => {
-        const element = document.getElementById(field);
-        if (element) element.textContent = '0.00';
-    });
-}
-// Calculate the time for a single operation entry
-async function calculateOperationTime(entryId, operationType) {
-    try {
-        const entry = document.getElementById(entryId);
-        if (!entry) {
-            throw new Error(`Could not find entry with ID: ${entryId}`);
-        }
-
-        const materialId = document.getElementById('materialSelect')?.value;
-        if (!materialId) {
-            throw new Error('Please select a material before calculating.');
-        }
-
-        // Gather all inputs for this entry
-        const dimensions = {};
-        entry.querySelectorAll('input[type="number"], input[type="text"], select').forEach(input => {
-            if (input.name && input.value) {
-                // Parse numeric inputs as float, leave others as strings
-                dimensions[input.name] = isNaN(parseFloat(input.value)) 
-                    ? input.value 
-                    : parseFloat(input.value);
-            }
-        });
-
-        // Get operation ID from the entry's dataset or ID
-        const operationId = entry.dataset.operationId || entry.id.replace('process_', '');
-        if (!operationId) {
-            throw new Error('Could not determine operation type.');
-        }
-
-        // Prepare the payload for the API
-        const payload = {
-            material_id: parseInt(materialId, 10),
-            operation_id: parseInt(operationId, 10),
-            operation_name: operationType,
-            dimensions: dimensions
-        };
-        
-        console.log('Sending payload to /api/calculate:', payload);
-
-        // Make the API call
-        const response = await fetch('/api/calculate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
-        console.log('API Response:', result);
-
-        // Update the UI with the result
-        const timeInput = document.getElementById(`${entryId}_time`);
-        if (!timeInput) {
-            throw new Error('Could not find time input field.');
-        }
-
-        if (response.ok && result.status === 'success') {
-            // Format time to 2 decimal places
-            const timeValue = parseFloat(result.time || 0);
-            timeInput.value = timeValue.toFixed(2);
-            
-            // Store the result data in the entry's dataset for later use
-            entry.dataset.calculationResult = JSON.stringify(result.data || {});
-            
-            // Update any other relevant UI elements
-            updateOperationResultUI(entryId, result);
-            
-            // Recalculate total time and cost
-            calculateTotalTime();
-            
-            return result;
-        } else {
-            throw new Error(result.message || 'Failed to calculate operation time');
-        }
-    } catch (error) {
-        console.error('Error in calculateOperationTime:', error);
-        const timeInput = document.getElementById(`${entryId}_time`);
-        if (timeInput) {
-            timeInput.value = 'Error';
-            timeInput.title = error.message || 'Calculation failed';
-        }
-        alert(`Error: ${error.message || 'Failed to calculate operation time'}`);
-        throw error;
-    }
-}
-
-// Helper function to update UI with operation results
-function updateOperationResultUI(entryId, result) {
-    const entry = document.getElementById(entryId);
-    if (!entry || !result.data) return;
-
-    const resultContainer = entry.querySelector('.operation-result');
-    if (!resultContainer) return;
-
-    const { time, data } = result;
-    resultContainer.innerHTML = `
-        <div class="p-2 bg-gray-50 rounded mt-2">
-            <div class="text-sm text-gray-600">Time: ${(time || 0).toFixed(2)} min</div>
-            ${data.cost ? `<div class="text-sm text-gray-600">Cost: ₹${data.cost.toFixed(2)}</div>` : ''}
-        </div>
-    `;
-}
-
-
-// Function to update miscellaneous time
-function updateMiscTime() {
-    const miscInput = document.getElementById('miscInput');
-    if (!miscInput) return;
-    
-    const miscTime = parseFloat(miscInput.value) || 0;
-    if (isNaN(miscTime) || miscTime < 0) {
-        alert('Please enter a valid positive number for miscellaneous time');
-        return;
-    }
-    
-    // Update the display
-    const miscTimeElement = document.getElementById('miscTime');
-    if (miscTimeElement) {
-        miscTimeElement.textContent = `${miscTime.toFixed(2)} min`;
-    }
-    
-    // Store the value in a data attribute for persistence
-    if (miscInput) {
-        miscInput.dataset.currentValue = miscTime;
-    }
-    
-    // Recalculate totals
-    calculateTotalTime();
-    
-    // Clear the input field
-    miscInput.value = '';
-    
-    // Show both sections if they're hidden
-    const timeCostSection = document.getElementById('timeCostSection');
-    const costEstimationSection = document.getElementById('costEstimationSection');
-    [timeCostSection, costEstimationSection].forEach(section => {
-        if (section) section.classList.add('visible');
-    });
-}
-
-
-// Cost calculation functions will be available via window.CostCalculator
-// after cost.js is loaded in the HTML
-
-// Cache for setup times to avoid redundant API calls
-const setupTimeCache = new Map();
-
-async function calculateTotalTime() {
-    // Get operation entries and time section
-    const operationEntries = document.querySelectorAll('.operation-entry');
-    const timeCostSection = document.getElementById('timeCostSection');
-    
-    // Hide time section by default
-    if (timeCostSection) {
-        timeCostSection.classList.remove('visible');
-    }
-    
-    // Return early if no operations
-    if (operationEntries.length === 0) {
-        return 0;
-    }
-
-    // Time calculations
-    let totalMachiningTime = 0;
-    let totalIdleTime = 0;
-    let totalToolTime = 0;
-    let totalSetupTime = 0;
-    
-    // Get global idle time input if it exists
-    const globalIdleInput = document.getElementById('globalIdleTime');
-    if (globalIdleInput) {
-        totalIdleTime = parseFloat(globalIdleInput.value) || 0;
-    }
-    
-    // Get global tool time input if it exists
-    const globalToolInput = document.getElementById('globalToolTime');
-    if (globalToolInput) {
-        totalToolTime = parseFloat(globalToolInput.value) || 0;
-    }
-
-    const operationIds = [];
-    
-    // Process each operation for machining time and collect times
-    for (const entry of operationEntries) {
-        const entryId = entry.id;
-        
-        // Get the process time input (process_X_time)
-        const timeInput = entry.querySelector(`#${entryId}_time`);
-        if (timeInput?.value) {
-            totalMachiningTime += parseFloat(timeInput.value) || 0;
-        }
-        
-        // Get per-operation idle time if it exists
-        const idleInput = entry.querySelector(`#${entryId}_idle_time`);
-        if (idleInput?.value) {
-            totalIdleTime += parseFloat(idleInput.value) || 0;
-        }
-        
-        // Get per-operation tool time if it exists
-        const toolInput = entry.querySelector(`#${entryId}_tool_time`);
-        if (toolInput?.value) {
-            totalToolTime += parseFloat(toolInput.value) || 0;
-        }
-        
-        // Collect operation IDs for setup time fetch
-        if (entry.dataset.operationId) {
-            operationIds.push(entry.dataset.operationId);
-        }
-    }
-
-    // Fetch setup times in parallel with better error handling
-    const setupTimePromises = operationIds.map(operationId => {
-        // Skip invalid operation IDs
-        if (!operationId || isNaN(parseInt(operationId))) {
-            console.warn(`Invalid operation ID: ${operationId}`);
-            return Promise.resolve(0);
-        }
-        
-        if (setupTimeCache.has(operationId)) {
-            return Promise.resolve(setupTimeCache.get(operationId));
-        }
-        
-        return fetch(`/get_setup_time?operation_id=${operationId}`)
-            .then(resp => {
-                if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`);
-                return resp.json();
-            })
-            .then(data => {
-                const time = parseFloat(data?.setup_time) || 0;
-                setupTimeCache.set(operationId, time);
-                return time;
-            })
-            .catch(error => {
-                console.error(`Failed to fetch setup time for operation ${operationId}:`, error);
-                return 0; // Return 0 if fetch fails
-            });
+    displayFields.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '0.00';
     });
     
-    // Wait for all setup times
-    const setupTimes = await Promise.all(setupTimePromises);
-    totalSetupTime = setupTimes.reduce((sum, time) => sum + time, 0);
-
-    // Get miscellaneous time
-    const miscTime = parseFloat(document.getElementById('miscInput')?.value) || 0;
-
-    // Total time calculation
-    const totalTime = totalMachiningTime + totalIdleTime + totalToolTime + totalSetupTime + miscTime;
-
-    // Calculate material weight (simplified - would need part dimensions from UI)
-    // For now using a placeholder, you'll need to implement actual calculation based on part geometry
-    function calculateMaterialWeight() {
-        // TODO: Implement actual material weight calculation based on part dimensions
-        // This is a placeholder that returns a default weight
-        return 0.5; // kg
-    }
-    
-    const materialWeight = calculateMaterialWeight();
-    
-    // Update Time UI
-    const updateIfExists = (id, value, formatter = v => v) => {
-        const element = document.getElementById(id);
-        if (element) element.textContent = formatter(value);
-    };
-
-    updateIfExists('machiningTime', totalMachiningTime, v => v.toFixed(2));
-    updateIfExists('idleTime', totalIdleTime, v => v.toFixed(2));
-    updateIfExists('setupTime', totalSetupTime, v => v.toFixed(2));
-    updateIfExists('toolTime', totalToolTime, v => v.toFixed(2));
-    updateIfExists('miscTime', miscTime, v => v.toFixed(2));
-    updateIfExists('totalTime', totalTime, v => v.toFixed(2));
-    
-    // Calculate and update costs if CostCalculator is available
-    let materialCost = 0;
-    let laborCost = 0;
-    let machineCost = 0;
-    let totalCost = 0;
-
-    if (window.CostCalculator) {
-        try {
-            // Get the selected material for cost calculation
-            const materialSelect = document.getElementById('materialSelect');
-            const materialType = materialSelect?.options[materialSelect?.selectedIndex]?.text.toLowerCase() || 'steel';
-            
-            // Calculate material volume (simplified - would need actual part dimensions)
-            const materialVolume = 1000; // Placeholder for material volume in mm³
-            
-            // Calculate costs using CostCalculator
-            materialCost = window.CostCalculator.calculateMaterialCost(materialVolume, materialType);
-            laborCost = window.CostCalculator.calculateLaborCost(totalMachiningTime);
-            machineCost = window.CostCalculator.calculateMachineCost(totalMachiningTime);
-            
-            // Get total costs with overhead and profit
-            const costs = window.CostCalculator.calculateTotalCost({
-                material: materialCost,
-                labor: laborCost,
-                machine: machineCost
-            });
-            
-            totalCost = costs.total;
-            
-            // Update the cost UI
-            window.CostCalculator.updateCostUI(costs);
-            
-            // Show the cost section
-            const costSection = document.getElementById('costEstimationSection');
-            if (costSection) {
-                costSection.style.display = 'block';
-            }
-        } catch (error) {
-            console.error('Error in cost calculation:', error);
-        }
-    }
-
-    // Show both sections after all calculations are done
-    [timeCostSection, costEstimationSection].forEach(section => {
-        if (section) section.classList.add('visible');
-    });
-
-    return {
-        totalTime,
-        totalCost: window.CostCalculator.getTotalCost(),
-        breakdown: {
-            times: {
-                machining: totalMachiningTime,
-                idle: totalIdleTime,
-                setup: totalSetupTime,
-                tool: totalToolTime,
-                misc: miscTime,
-                total: totalTime
-            },
-            costs: {
-                material: materialCost, 
-                timeBased: laborCost + machineCost,
-                tooling: 0,
-                fixed: 0,
-                total: window.CostCalculator.getTotalCost()
-            }
-        }
-    };
+    // Hide sections
+    document.getElementById('timeSection')?.classList.remove('visible');
+    document.getElementById('costSection')?.classList.remove('visible');
 }
 
+// ============================ VALIDATION ============================
 
-// Validate form before calculation
 function validateOperationForm(processId, operationType) {
     const entry = document.getElementById(processId);
-    if (!entry) {
-        throw new Error('Process entry not found');
-    }
-    
-    // Check material selection
+    if (!entry) throw new Error('Process entry not found');
+
     const materialSelect = entry.querySelector(`select#material_${processId}`);
-    if (!materialSelect) {
-        throw new Error(`Material select element with ID 'material_${processId}' not found`);
-    }
-    if (!materialSelect.value) {
+    if (!materialSelect || !materialSelect.value) {
         throw new Error('Please select a material');
     }
-    
-    // Check required fields for the operation
+
     const opType = operationType.toLowerCase();
     const required = requiredFields[opType] || [];
-    
-    // Debug logging
-    console.debug(`Validating ${opType}: Required = ${required.join(', ')}`);
-    
     const missingFields = [];
-    
+
     required.forEach(field => {
         const input = entry.querySelector(`#${processId}_${field}`);
-        if (!input) {
-            console.warn(`Input field ${field} not found for process ${processId}`);
-            return;
-        }
-        
-        // Check if value is empty but not '0'
-        if (input.value === '' && input.value !== '0') {
+        if (!input || (input.value === '' && input.value !== '0')) {
             const label = entry.querySelector(`label[for="${processId}_${field}"]`);
-            const fieldName = label ? label.textContent.replace(':', '') : field;
-            missingFields.push(fieldName);
+            missingFields.push(label ? label.textContent.replace(':', '') : field);
         }
     });
-    
+
     if (missingFields.length > 0) {
-        console.debug(`Missing fields: ${missingFields.join(', ')}`);
         throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
     }
-    
     return true;
 }
 
-// High-level wrapper — validates & shows loader
-async function calculateOperation(processId, operationType) {
-    const entry = document.getElementById(processId);
-    if (!entry) return;
+// ============================ DYNAMIC OPERATION FORM HANDLING ============================
 
-    const resultDiv = document.getElementById(`result-${processId}`);
-    resultDiv.innerHTML = '<div class="alert alert-info">Calculating...</div>';
-
-    try {
-        // Validate before calling the backend
-        validateOperationForm(processId, operationType);
-
-        // Delegate to the function that does the API call
-        await calculateOperationTime(processId, operationType);
-    } catch (error) {
-        resultDiv.innerHTML = `
-            <div class="alert alert-danger"><strong>Error:</strong> ${error.message}</div>`;
-        console.error(error);
-    }
-}
-
-// Constants for PDF generation
-const PDF_TERMS = `Terms and Conditions:
-1. This is a computer-generated estimate.
-2. Prices are subject to change based on material availability.
-3. Minimum order quantity may apply.`;
-
-// Export operations to PDF
-async function exportToPDF(type = 'customer') {
-    try {
-        const { jsPDF } = window.jspdf;
-        if (!jsPDF) {
-            throw new Error('PDF library not loaded');
-        }
-        
-        const doc = new jsPDF();
-        const title = type === 'shop' ? 'Machine Shop Report' : 'Customer Quotation';
-        
-        doc.setFontSize(16);
-        doc.text(title, 105, 20, { align: 'center' });
-        
-        // Add date
-        const date = new Date().toLocaleDateString();
-        doc.setFontSize(10);
-        doc.text(`Date: ${date}`, 200, 15, { align: 'right' });
-        
-        // Add content based on type
-        if (type === 'shop') {
-            // Shop version - more technical details
-            doc.text('Technical Details:', 14, 40);
-            // Add operations list
-            const operationEntries = document.querySelectorAll('.operation-entry');
-            let yPos = 60;
-            
-            operationEntries.forEach((entry, index) => {
-                const operationName = entry.querySelector('h3')?.textContent || `Operation ${index + 1}`;
-                doc.text(`${index + 1}. ${operationName}`, 20, yPos);
-                yPos += 10;
-                
-                // Add operation parameters
-                const inputs = entry.querySelectorAll('input[type="number"]');
-                inputs.forEach(input => {
-                    if (input.value) {
-                        const label = input.previousElementSibling?.textContent || 'Parameter';
-                        doc.text(`   • ${label}: ${input.value}`, 25, yPos);
-                        yPos += 7;
-                    }
-                });
-                
-                yPos += 5;
-                
-                // Add new page if needed
-                if (yPos > 270) {
-                    doc.addPage();
-                    yPos = 20;
-                }
-            });
+// Toggle section visibility
+function toggleSection(sectionId, show = true) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        if (show) {
+            section.classList.remove('hidden');
+            section.style.display = 'block';
+            // Ensure the section is visible and properly positioned
+            section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
-            // Customer version - simplified
-            doc.text('Quotation Details:', 14, 40);
-            
-            // Add customer info
-            doc.setFontSize(12);
-            doc.text('Customer: ________________________', 20, 60);
-            doc.text('Project: _________________________', 20, 70);
-            
-            // Add summary
-            doc.setFontSize(10);
-            doc.text('Summary of Operations:', 20, 90);
-            
-            const operationEntries = document.querySelectorAll('.operation-entry');
-            let currentY = 100;
-            
-            operationEntries.forEach((entry, index) => {
-                const operationName = entry.querySelector('h3')?.textContent || `Operation ${index + 1}`;
-                doc.text(`${index + 1}. ${operationName}`, 25, currentY);
-                currentY += 7;
-                
-                // Add operation summary
-                const opType = entry.querySelector('.operation-type')?.textContent || 'Operation';
-                const time = entry.querySelector('.operation-time')?.textContent || 'N/A';
-                doc.text(`- ${opType}: ${time} min`, 30, currentY);
-                currentY += 7;
-                
-                if (currentY > 270) {
-                    doc.addPage();
-                    currentY = 20;
-                }
-            });
-            
-            // Add total cost
-            const totalCost = document.getElementById('totalCost')?.textContent || '0.00';
-            doc.setFontSize(12);
-            doc.setFont(undefined, 'bold');
-            doc.text(`Total Estimated Cost: ₹${totalCost}`, 20, currentY + 20);
-            
-            // Add terms and conditions for customer
-            doc.setFontSize(10);
-            doc.text(PDF_TERMS, 20, currentY + 28, { maxWidth: 180 });
+            section.classList.add('hidden');
+            section.style.display = 'none';
         }
-        
-        // Save the PDF
-        const filename = type === 'shop' 
-            ? `Machine_Shop_Report_${new Date().getTime()}.pdf`
-            : `Customer_Quote_${new Date().getTime()}.pdf`;
-        
-        doc.save(filename);
-    } catch (error) {
-        console.error('Error generating PDF:', error);
-        alert('Failed to generate PDF. Please check console for details.');
     }
 }
+
+function initializeEventListeners() {
+    const materialSelect = document.getElementById('materialSelect');
+    const operationSelect = document.getElementById('operationSelect');
+    if (materialSelect) materialSelect.addEventListener('change', updateParamFormVisibility); // Provided elsewhere
+    if (operationSelect) operationSelect.addEventListener('change', updateParamFormVisibility); // Provided elsewhere
+}
+
+// ============================ FORM VISIBILITY ============================
+
+/**
+ * Update the visibility of parameter forms based on selected operation
+ */
+function updateParamFormVisibility() {
+    const operationSelect = document.getElementById('operationSelect');
+    const paramFormContainer = document.getElementById('paramFormContainer');
+    
+    if (!operationSelect || !paramFormContainer) return;
+    
+    const selectedOperation = operationSelect.value;
+    
+    // Hide all parameter forms
+    const allParamForms = paramFormContainer.querySelectorAll('.param-form');
+    allParamForms.forEach(form => {
+        form.style.display = 'none';
+    });
+    
+    // Show the selected operation's parameter form if it exists
+    const selectedForm = document.getElementById(`${selectedOperation}Params`);
+    if (selectedForm) {
+        selectedForm.style.display = 'block';
+    }
+}
+
+// ============================ GLOBAL EXPORTS ============================
+
+window.toggleSection = toggleSection;
+window.updateParamFormVisibility = updateParamFormVisibility;
+window.updateToolTime = updateToolTime;
+window.updateMiscTime = updateMiscTime;
+window.clearAll = clearAll;
+window.calculateOperationTime = calculateOperationTime;
+window.removeEntry = removeEntry;
+
+// Remove an element by ID or element reference
+function removeElement(element) {
+    if (typeof element === 'string') {
+        element = document.getElementById(element);
+    }
+    if (element && element.parentNode) {
+        element.parentNode.removeChild(element);
+        return true;
+    }
+    return false;
+}
+
+export {
+    clearAll,
+    toggleSection,
+    validateOperationForm,
+    removeElement
+};
+
