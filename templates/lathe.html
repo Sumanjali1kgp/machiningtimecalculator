@@ -77,9 +77,10 @@
             </div>
 
             <!-- Operation forms container -->
-            <div id="operationFormsContainer" class="operation-container">
-                <!-- Operation forms will be dynamically added here -->
+            <div id="operationFormsContainer" class="operation-forms-container">
+                <!-- Operation forms will be added here -->
             </div>
+
             <div id="operationList"></div>
                         
                         <!-- Dynamic Parameter Form Container -->
@@ -87,145 +88,193 @@
                             <!-- Form will be dynamically inserted here by JavaScript -->
                         </div>
                     </div>
-                    <!-- Time Section -->
-                    <div id="timeSection" class="time-cost-section bg-gray-50 p-6 rounded-lg shadow-md mb-6">
-                        <h3 class="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">Time Breakdown</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 transition-all hover:shadow-md">
-                                <div class="text-sm font-medium text-gray-500 mb-1">Machining Time</div>
-                                <div class="text-lg font-semibold text-blue-600" id="machiningTime" data-total="0">0.00 min</div>
-                            </div>
-                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 transition-all hover:shadow-md">
-                                <div class="text-sm font-medium text-gray-500 mb-1">Idle Time</div>
-                                <div class="text-lg font-semibold text-yellow-600" id="idleTime" data-total="0">0.00 min</div>
-                            </div>
-                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 transition-all hover:shadow-md">
-                                <div class="text-sm font-medium text-gray-500 mb-1">Setup Time</div>
-                                <div class="text-lg font-semibold text-green-600" id="setupTime" data-total="0">0.00 min</div>
-                            </div>
-                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 transition-all hover:shadow-md">
-                                <div class="text-sm font-medium text-gray-500 mb-1">Tool Change Time</div>
-                                <div class="text-lg font-semibold text-purple-600" id="toolTime" data-total="0">0.00 min</div>
-                            </div>
-                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 transition-all hover:shadow-md">
-                                <div class="text-sm font-medium text-gray-500 mb-1">Miscellaneous Time</div>
-                                <div class="text-lg font-semibold text-pink-600" id="miscTime" data-total="0">0.00 min</div>
-                            </div>
+                   
+                   
+                    <div class="text-center">
+                        <button type="button" id="calculateTimeBtn" class="btn bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors" onclick="calculateAndDisplayTimes()">
+                            <i class="fas fa-clock mr-2"></i> Calculate Total Time
+                        </button>
+                
+                    </div> 
+            
+            <!-- Time Section Container -->
+            <div id="timeSection" class="mt-10">
+                <!-- Time Inputs Card -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Time Inputs</h3>
+                    
+                    <!-- Time Input Fields -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <!-- Setup Time -->
+                        <div>
+                            <label for="manualSetupTime" class="block text-sm font-medium text-gray-700">🛠️ Setup Time (min)</label>
+                            <input type="number" id="manualSetupTime" class="form-input mt-1 block w-full" step="0.01" min="0" placeholder="Enter setup time" onchange="updateSetupTime()">
                         </div>
 
-                        <!-- Total Time -->
-                        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-100">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <div class="text-sm font-medium text-gray-600">TOTAL TIME</div>
-                                    <div class="text-3xl font-bold text-gray-800" id="totalTime">0.00 min</div>
-                                </div>
-                                <div class="text-blue-500">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </div>
-                            </div>
+                        <!-- Tool Change Time -->
+                        <div>
+                            <label for="manualToolTime" class="block text-sm font-medium text-gray-700">🔧 Tool Change Time (min)</label>
+                            <input type="number" id="manualToolTime" class="form-input mt-1 block w-full" step="0.01" min="0" placeholder="Enter tool change time" onchange="updateToolTime()">
                         </div>
 
-                        <!-- User Input -->
-                        <div class="mt-4">
-                            <label for="setupTimeInput" class="block text-sm font-medium text-gray-500 mb-2">Setup Time (min)</label>
-                            <input type="number" id="setupTimeInput" class="form-input mb-4" step="0.1" min="0" value="0" placeholder="e.g. 5.0" onchange="updateSetupTime()">
-
-                            <label for="toolTimeInput" class="block text-sm font-medium text-gray-500 mb-2">Tool Change or Regrinding Time per Job (min)</label>
-                            <input type="number" id="toolTimeInput" class="form-input mb-4" step="0.1" min="0" value="0" placeholder="e.g. 10.5" onchange="updateToolTime()">
-
-                            <label for="miscInput" class="block text-sm font-medium text-gray-500 mb-2">Miscellaneous Time (min)</label>
-                            <input type="number" id="miscInput" class="form-input mb-4 w-full" step="0.1" min="0" value="0" placeholder="e.g. 2.5" onchange="updateMiscTime()">
+                        <!-- Miscellaneous Time -->
+                        <div>
+                            <label for="manualMiscTime" class="block text-sm font-medium text-gray-700">⋯ Miscellaneous Time (min)</label>
+                            <input type="number" id="manualMiscTime" class="form-input mt-1 block w-full" step="0.01" min="0" placeholder="Enter misc time" onchange="updateMiscTime()">
                         </div>
                     </div>
+                </div>
 
-                    <!-- Cost Calculation Button -->
-                    </div> <!-- End of operation-form -->
-                </div> <!-- End of form-section -->
-                
-                <div class="button-section">
-                    <button type="button" id="calculateTimeBtn" class="btn bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors">
-                        <i class="fas fa-clock mr-2"></i> Calculate Total Time
-                    </button>
-                    <button type="button" id="calculateCostBtn" class="btn" onclick="document.getElementById('calculateCostBtn').click()">
-                        <i class="fas fa-calculator"></i> Calculate Total Cost
-                    </button>
-                </div> <!-- End of button-section -->
-            </div> <!-- End of form-container -->
-            
-           
-
-            <!-- Cost Details Section (Initially Hidden) -->
-            <div id="costDetailsSection" class="hidden">
-                <!-- Cost Breakdown Table -->
+                <!-- Time Breakdown Table -->
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-6">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">Time Breakdown</h3>
+                    </div>
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time (min)</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost (₹)</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Material Cost</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">—</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="materialCost">₹0.00</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Machining Time</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="machiningTime">0.00</td>
                             </tr>
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Setup & Idle Time Cost</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" id="setupIdleTimeValue">0.00</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="setupIdleCost">₹0.00</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Idle Time</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="idleTime">0.00</td>
                             </tr>
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Machining Cost</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" id="machiningTimeValue">0.00</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="machiningCost">₹0.00</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Setup Time</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="setupTime">0.00</td>
                             </tr>
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Tooling Cost</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" id="toolingTimeValue">0.00</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="toolingCost">₹0.00</td>
-                            </tr>
-                            <tr class="border-t-2 border-gray-200">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">Total Raw Cost</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">—</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-lg font-bold text-gray-900" id="totalRawCost">₹0.00</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Tool Change Time</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="toolTime">0.00</td>
                             </tr>
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Overhead (40%)</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">—</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="overheadCost">+ ₹0.00</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Miscellaneous Time</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" id="miscTime">0.00</td>
                             </tr>
                             <tr class="bg-gray-50">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">Final Estimated Cost</td>
-                                <td class="px-6 py-4 whitespace-nowrap"></td>
-                                <td class="px-6 py-4 whitespace-nowrap text-xl font-bold text-blue-700" id="finalCost">₹0.00</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">Total Time</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-lg font-bold text-blue-700" id="totalTime">0.00</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-
-                <!-- Final Cost Summary -->
-                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-sm font-medium text-gray-700">Total Raw Cost:</span>
-                        <span class="text-base font-semibold">₹<span id="totalRawCostSummary">0.00</span></span>
-                    </div>
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-sm font-medium text-gray-700">Overhead (40%):</span>
-                        <span class="text-base font-semibold text-red-600">+ ₹<span id="overheadCostSummary">0.00</span></span>
-                    </div>
-                    <div class="flex justify-between items-center pt-3 mt-3 border-t border-gray-200">
-                        <span class="text-lg font-bold text-gray-900">Final Estimated Cost:</span>
-                        <span class="text-xl font-bold text-blue-700">₹<span id="finalCostSummary">0.00</span></span>
-                    </div>
-                </div>
             </div>
+
+
+            
+
+            <!-- Cost Details Section (Initially Hidden) -->
+                       <!-- Cost Input Fields -->
+                       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div>
+                            <label for="materialCostInput" class="block text-sm font-medium text-gray-700">Material Cost (₹)</label>
+                            <input type="number" id="materialCostInput" class="form-input mt-1 block w-full" step="0.01" min="0" placeholder="Enter material cost">
+                        </div>
+                        <div>
+                            <label for="laborRateInput" class="block text-sm font-medium text-gray-700">Labor Rate (₹/hr)</label>
+                            <input type="number" id="laborRateInput" class="form-input mt-1 block w-full" step="0.01" min="0" placeholder="e.g. 300">
+                        </div>
+                        <div>
+                            <label for="toolCostInput" class="block text-sm font-medium text-gray-700">Tool Cost per Use (₹)</label>
+                            <input type="number" id="toolCostInput" class="form-input mt-1 block w-full" step="0.01" min="0" placeholder="Enter tool cost per usage">
+                        </div>
+                        <div>
+                            <label for="miscCostInput" class="block text-sm font-medium text-gray-700">Miscellaneous Cost (₹)</label>
+                            <input type="number" id="miscCostInput" class="form-input mt-1 block w-full" step="0.01" min="0" placeholder="Enter miscellaneous cost">
+                        </div>
                     </div>
+        
+                    <!-- Cost Calculation Button -->
+                    <div class="text-center">
+                        <button type="button" id="calculateCostBtn" class="btn bg-blue-600 text-white hover:bg-blue-700" onclick="calculateAndDisplayCosts()">
+                            <i class="fas fa-calculator"></i> Calculate Total Cost
+                        </button>
+                    </div>
+        
+                    <!-- Cost Details Section -->
+                    <div id="costDetailsSection" class="hidden mt-6">
+                        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-6">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time (min)</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost (₹)</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm text-gray-500">Material Cost</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500">—</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900" id="materialCost">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm text-gray-500">Setup & Idle Time Cost</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500" id="setupIdleTimeValue">0.00</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900" id="setupIdleCost">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm text-gray-500">Non-Productive Cost</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500">—</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900" id="nonProductiveCost">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm text-gray-500">Machining Cost</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500" id="machiningTimeValue">0.00</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900" id="machiningCost">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm text-gray-500">Tooling Cost</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500" id="toolingTimeValue">0.00</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900" id="toolingCost">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm text-gray-500">Miscellaneous Cost</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500">—</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900" id="miscCost">₹0.00</td>
+                                    </tr>
+                                    <tr class="border-t-2 border-gray-200">
+                                        <td class="px-6 py-4 text-sm font-bold text-gray-900">Total Raw Cost</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500">—</td>
+                                        <td class="px-6 py-4 text-lg font-bold text-gray-900" id="totalRawCost">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm text-gray-500">Overhead (40%)</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500">—</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900" id="overheadCost">+ ₹0.00</td>
+                                    </tr>
+                                    <tr class="bg-gray-50">
+                                        <td class="px-6 py-4 text-sm font-bold text-gray-900">Final Estimated Cost</td>
+                                        <td class="px-6 py-4"></td>
+                                        <td class="px-6 py-4 text-xl font-bold text-blue-700" id="finalCost">₹0.00</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+        
+                        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm font-medium text-gray-700">Total Raw Cost:</span>
+                                <span class="text-base font-semibold">₹<span id="totalRawCostSummary">0.00</span></span>
+                            </div>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm font-medium text-gray-700">Overhead (40%):</span>
+                                <span class="text-base font-semibold text-red-600">+ ₹<span id="overheadCostSummary">0.00</span></span>
+                            </div>
+                            <div class="flex justify-between items-center pt-3 mt-3 border-t border-gray-200">
+                                <span class="text-lg font-bold text-gray-900">Final Estimated Cost:</span>
+                                <span class="text-xl font-bold text-blue-700">₹<span id="finalCostSummary">0.00</span></span>
+                            </div>
+                        </div>
+                    </div>
+        
 
                     <!-- Action Buttons -->
                     <div class="export-options">
@@ -321,129 +370,260 @@
     }
     </script>
     
-    <!-- Load jsPDF and autoTable first -->
+    <!-- External Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <!-- Make jsPDF available globally -->
     <script>
         window.jspdf = window.jspdf || {};
     </script>
-    
-    <!-- Load all modules in the correct order -->
+
+    <!-- Main Application Script -->
     <script type="module">
-        // Import the export function
-        const pdfExportModule = '{{ url_for('static', filename='pdf-export.js') }}';
-        const timeModule = '{{ url_for('static', filename='time.js') }}';
-        const costModule = '{{ url_for('static', filename='cost.js') }}';
+        // Load required modules
+        const { exportToPDF } = await import('/static/pdf-export.js');
+        const {
+            calculateAndDisplayTimes,
+            updateToolTime,
+            updateMiscTime,
+            updateSetupTime,
+            calculateOperationTime,
+            updateIfExists,
+            updateOperationResultUI
+        } = await import('/static/time.js');
         
-        // Function to initialize the application
-        async function initializeApp() {
+        const {
+            calculateAndDisplayCosts,
+            calculateMaterialCost,
+            calculateLaborCost,
+            calculateMachineCost,
+            calculateToolingCost,
+            calculateSetupIdleCost,
+            calculateTotalCost,
+            updateCostUI,
+            updateCostSummaryTable
+        } = await import('/static/cost.js');
+        
+        // Make functions globally available
+        window.calculateAndDisplayTimes = calculateAndDisplayTimes;
+        window.calculateAndDisplayCosts = calculateAndDisplayCosts;
+        window.updateToolTime = updateToolTime;
+        window.updateMiscTime = updateMiscTime;
+        window.updateSetupTime = updateSetupTime;
+        window.calculateOperationTime = calculateOperationTime;
+        window.exportToPDF = exportToPDF;
+
+        // Helper function to load materials
+        async function loadMaterials() {
             try {
-                // Import modules
-                const [pdfExport, time, cost] = await Promise.all([
-                    import(pdfExportModule),
-                    import(timeModule),
-                    import(costModule)
-                ]);
-                
-                console.log('All modules loaded successfully');
-                
-                // Make functions globally available
-                window.exportToPDF = pdfExport.exportToPDF;
-                window.calculateAndDisplayTimes = time.calculateAndDisplayTimes;
-                window.calculateAndDisplayCosts = cost.calculateAndDisplayCosts;
-                window.updateToolTime = time.updateToolTime || function() {};
-                window.updateMiscTime = time.updateMiscTime || function() {};
-                window.updateSetupTime = time.updateSetupTime || function() {};
-                window.calculateOperationTime = time.calculateOperationTime || function() {};
-                
-                // Show time section by default
-                const timeSection = document.getElementById('timeSection');
-                if (timeSection) {
-                    timeSection.style.display = 'block';
-                    timeSection.classList.remove('hidden');
-                    console.log('Time section shown');
+                const response = await fetch('/api/materials');
+                const materials = await response.json();
+                const select = document.getElementById('materialSelect');
+                if (select) {
+                    select.innerHTML = '<option value="">Select Material</option>';
+                    materials.forEach(mat => {
+                        select.add(new Option(mat.material_name, mat.material_id || mat.id));
+                    });
                 }
-                
-                // Set up event listeners for time inputs
-                function setupTimeInputs() {
-                    console.log('Setting up time input listeners...');
-                    
-                    const toolTimeInput = document.getElementById('toolTimeInput');
-                    const miscInput = document.getElementById('miscInput');
-                    const setupTimeInput = document.getElementById('setupTimeInput');
-                    
-                    if (toolTimeInput) {
-                        toolTimeInput.addEventListener('input', () => {
-                            console.log('Tool time input changed');
-                            window.updateToolTime();
-                            window.calculateAndDisplayTimes();
-                        });
-                    }
-                    
-                    if (miscInput) {
-                        miscInput.addEventListener('input', () => {
-                            console.log('Misc time input changed');
-                            window.updateMiscTime();
-                            window.calculateAndDisplayTimes();
-                        });
-                    }
-                    
-                    if (setupTimeInput) {
-                        setupTimeInput.addEventListener('input', () => {
-                            console.log('Setup time input changed');
-                            window.updateSetupTime();
-                            window.calculateAndDisplayTimes();
-                        });
-                    }
-                }
-                
-                // Initialize time inputs
-                setupTimeInputs();
-                
-                // Initial calculation
-                console.log('Performing initial time calculation...');
-                if (typeof window.calculateAndDisplayTimes === 'function') {
-                    await window.calculateAndDisplayTimes();
-                }
-                
-                // Enable calculate cost button if it exists
-                const calculateCostBtn = document.getElementById('calculateCostBtn');
-                if (calculateCostBtn) {
-                    calculateCostBtn.disabled = false;
-                    console.log('Calculate Cost button enabled');
-                }
-                
             } catch (error) {
-                console.error('Error initializing application:', error);
+                console.error('Error loading materials:', error);
             }
         }
-        
-        // Run initialization when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
-        } else {
-            initializeApp();
+
+        // Helper function to fetch and populate operations
+        async function fetchAndPopulateOperations() {
+            try {
+                const response = await fetch('/api/operations');
+                const operations = await response.json();
+                const select = document.getElementById('operationSelect');
+                if (select) {
+                    select.innerHTML = '<option value="" disabled selected>--Select Process--</option>';
+                    operations.forEach(op => {
+                        select.add(new Option(op.operation_name, op.operation_id));
+                    });
+                    window.operations = operations.reduce((acc, op) => {
+                        acc[op.operation_id] = op.operation_name.toLowerCase();
+                        return acc;
+                    }, {});
+                }
+            } catch (error) {
+                console.error('Error loading operations:', error);
+            }
         }
-    </script>
-    </script>
-    
-    <!-- Load main application script -->
-    <script type="module" src="{{ url_for('static', filename='script.js') }}"></script>
+
+        // Initialize the application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Initializing application...');
+            
+            // Get DOM elements
+            const timeSection = document.getElementById('timeSection');
+            const costSection = document.getElementById('costDetailsSection');
+            const calculateTimeBtn = document.getElementById('calculateTimeBtn');
+            const calculateCostBtn = document.getElementById('calculateCostBtn');
+            const toolTimeInput = document.getElementById('toolTimeInput');
+            const miscInput = document.getElementById('miscInput');
+            const setupTimeInput = document.getElementById('setupTimeInput');
+
+            // Show time section by default
+            if (timeSection) {
+                timeSection.classList.remove('hidden');
+            }
+
+            // Setup time input listeners
+            if (toolTimeInput) {
+                toolTimeInput.addEventListener('input', () => {
+                    console.log('Tool time input changed');
+                    updateToolTime();
+                    calculateAndDisplayTimes();
+                });
+            }
+
+            if (miscInput) {
+                miscInput.addEventListener('input', () => {
+                    console.log('Misc time input changed');
+                    updateMiscTime();
+                    calculateAndDisplayTimes();
+                });
+            }
+
+            if (setupTimeInput) {
+                setupTimeInput.addEventListener('input', () => {
+                    console.log('Setup time input changed');
+                    updateSetupTime();
+                    calculateAndDisplayTimes();
+                });
+            }
+
+            // Time Button Click Handler
+            if (calculateTimeBtn) {
+                calculateTimeBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    console.log('Calculate Time button clicked');
+                    
+                    // Check if any operation entries exist
+                    const operationEntries = document.querySelectorAll('.operation-entry, .process-entry');
+                    if (operationEntries.length === 0) {
+                        alert("Please add at least one operation before calculating time.");
+                        return;
+                    }
+                    
+                    // Show time section and hide cost section
+                    if (timeSection) {
+                        timeSection.classList.remove('hidden');
+                        timeSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                    if (costSection) {
+                        costSection.classList.add('hidden');
+                    }
+
+                    // Calculate and display times
+                    try {
+                        await calculateAndDisplayTimes();
+                    } catch (error) {
+                        console.error('Error calculating times:', error);
+                    }
+                });
+            }
+
+            // Cost Button Click Handler
+            if (calculateCostBtn) {
+                calculateCostBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    console.log('Calculate Cost button clicked');
+                    
+                    // Show cost section and hide time section
+                    if (costSection) {
+                        costSection.classList.remove('hidden');
+                        costSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                    if (timeSection) {
+                        timeSection.classList.add('hidden');
+                    }
+
+                    // Calculate and display costs
+                    try {
+                        // First ensure times are calculated
+                        await calculateAndDisplayTimes();
+                        // Then calculate and display costs
+                        await calculateAndDisplayCosts();
+                    } catch (error) {
+                        console.error('Error calculating costs:', error);
+                    }
+                });
+                
+                // Enable the calculate cost button
+                calculateCostBtn.disabled = false;
+            }
+
+            // Load materials and operations
+            await loadMaterials();
+            await fetchAndPopulateOperations();
+            
+            console.log('✅ Application initialized successfully. Waiting for user input...');
+            
+            // Make clearAll function available globally
+            window.clearAll = function() {
+                // Clear operation entries
+                const entriesContainer = document.querySelector('.operation-entries');
+                if (entriesContainer) {
+                    entriesContainer.innerHTML = '';
+                }
+
+                // Reset time inputs
+                const timeInputs = ['toolTimeInput', 'miscInput', 'setupTimeInput'];
+                timeInputs.forEach(id => {
+                    const input = document.getElementById(id);
+                    if (input) input.value = '';
+                });
+
+                // Reset cost inputs
+                const costInputs = ['laborRateInput', 'machineRateInput', 'materialCostInput', 'miscCostInput'];
+                costInputs.forEach(id => {
+                    const input = document.getElementById(id);
+                    if (input) input.value = '';
+                });
+
+                // Reset material and operation selects
+                const materialSelect = document.getElementById('materialSelect');
+                if (materialSelect) materialSelect.selectedIndex = 0;
+                
+                const operationSelect = document.getElementById('operationSelect');
+                if (operationSelect) operationSelect.selectedIndex = 0;
+
+                // Hide sections
+                const sections = ['timeSection', 'costDetailsSection'];
+                sections.forEach(id => {
+                    const section = document.getElementById(id);
+                    if (section) section.classList.add('hidden');
+                });
+
+                // Reset any displayed results
+                const resultElements = document.querySelectorAll('[id$="Time"], [id$="Cost"]');
+                resultElements.forEach(el => {
+                    if (el.tagName === 'INPUT' || el.tagName === 'SELECT') {
+                        el.value = '';
+                    } else {
+                        el.textContent = '0';
+                    }
+                });
+
+                console.log('All inputs and results have been cleared.');
+            };
+        });
     </script>
 
-  
     <!-- Footer -->
     <footer>
         <div class="container">
             <div class="footer-bottom">
-                <p>&copy; 2023 IIT Kharagpur. All rights reserved.</p>
+                <p>&copy; 2025 IIT Kharagpur. All rights reserved.</p>
             </div>
         </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Scripts are loaded as modules in script.js -->
+    <!-- All scripts are loaded in the head and module script section -->
 </body>
 </html>
