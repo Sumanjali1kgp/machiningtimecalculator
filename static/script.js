@@ -1,5 +1,8 @@
 // script.js - Main application script for the Machining Time Calculator
 
+// Import functions from other modules
+import { calculateAndDisplayCosts } from './cost.js';
+
 // Global variables
 let operations = [];
 let materials = [];
@@ -10,20 +13,26 @@ let formContainer, addProcessBtn;
 let operationList; // Declare operationList as a global variable
 
 // These will be set by the module loader in lathe.html
-let calculateAndDisplayTimes, updateToolTime, updateMiscTime, updateSetupTime, calculateOperationTime, calculateAndDisplayCosts;
+let updateToolTime, updateMiscTime, updateSetupTime, calculateOperationTime;
 
-// Wait for the window to be fully loaded
-window.addEventListener('load', () => {
-    // These will be available after the modules are loaded
-    calculateAndDisplayTimes = window.calculateAndDisplayTimes;
-    updateToolTime = window.updateToolTime;
-    updateMiscTime = window.updateMiscTime;
-    updateSetupTime = window.updateSetupTime;
-    calculateOperationTime = window.calculateOperationTime;
-    calculateAndDisplayCosts = window.calculateAndDisplayCosts;
+// Update the functions when they become available
+function updateModuleFunctions() {
+    updateToolTime = window.updateToolTime || updateToolTime;
+    updateMiscTime = window.updateMiscTime || updateMiscTime;
+    updateSetupTime = window.updateSetupTime || updateSetupTime;
+    calculateOperationTime = window.calculateOperationTime || calculateOperationTime;
     
-    console.log('Global functions initialized in script.js');
-});
+    // Make our function available globally
+    window.calculateAndDisplayTimes = calculateAndDisplayTimes;
+    
+    // Initialize the module functions
+    if (typeof updateToolTime === 'function') updateToolTime();
+    if (typeof updateMiscTime === 'function') updateMiscTime();
+    if (typeof updateSetupTime === 'function') updateSetupTime();
+    if (typeof calculateOperationTime === 'function') calculateOperationTime();
+}
+
+
 
 // Helper function to update UI elements if they exist
 function updateIfExists(id, value, formatter = v => v) {
@@ -42,7 +51,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const calculateCostBtn = document.getElementById('calculateCostBtn');
     const timeSection = document.getElementById('timeSection');
     const costSection = document.getElementById('costDetailsSection');
-    
     if (calculateTimeBtn && timeSection) {
         // Remove any existing event listeners
         const newTimeBtn = calculateTimeBtn.cloneNode(true);
@@ -187,80 +195,46 @@ async function initApp() {
         fetchAndPopulateOperations()
     ]);
     
+    // Set up event delegation for operation calculate buttons
+    document.addEventListener('click', (e) => {
+        const calculateBtn = e.target.closest('.operation-calculate-btn');
+        if (calculateBtn) {
+            e.preventDefault();
+            const entryId = calculateBtn.dataset.entryId;
+            const operationType = calculateBtn.dataset.operationType;
+            if (entryId && operationType) {
+                calculateOperationTime(entryId, operationType);
+            }
+        }
+    });
+
     // Set up button event listeners
     const setupCalculateButtons = () => {
-        console.log('Setting up calculate buttons...');
-        
+        console.log('Setting up calculate buttons');
         // Ensure time section is hidden by default
         const timeSection = document.getElementById('timeSection');
         if (timeSection) {
             timeSection.classList.add('hidden');
             console.log('Time section hidden by default');
+
         }
 
-        // Time calculation button
-        const calculateTimeBtn = document.getElementById('calculateTimeBtn');
-        if (calculateTimeBtn) {
-            console.log('Setting up calculateTimeBtn event listener');
-            
-            // Remove any existing event listeners
-            const newBtn = calculateTimeBtn.cloneNode(true);
-            calculateTimeBtn.parentNode.replaceChild(newBtn, calculateTimeBtn);
-            
-            // Add new event listener
-            newBtn.addEventListener('click', async function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('Calculate Time button clicked');
-                console.log('Calculate Time button clicked');
-                try {
-                    // Show the time section
-                    const timeSection = document.getElementById('timeSection');
-                    if (timeSection) {
-                        // Make sure the section is visible
-                        timeSection.style.display = 'block';
-                        timeSection.classList.remove('hidden');
-                        
-                        console.log('Calculating and displaying times...');
-                        // Calculate and display times
-                        const results = await calculateAndDisplayTimes();
-                        console.log('Calculation results:', results);
-                        
-                        // Force UI update
-                        document.body.style.visibility = 'hidden';
-                        document.body.offsetHeight; // Trigger reflow
-                        document.body.style.visibility = 'visible';
-                        
-                        // Scroll to the time section
-                        console.log('Scrolling to time section...');
-                        timeSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                } catch (error) {
-                    console.error('Error in calculate time button click:', error);
-                }
-            });
-        } else {
-            console.warn('calculateTimeBtn not found in the DOM');
-        }
+        // Time calculation button is now handled by the global event listener above
         
         // Cost calculation button
         const calculateCostBtn = document.getElementById('calculateCostBtn');
         if (calculateCostBtn) {
-            console.log('Found calculateCostBtn, adding event listener');
+            console.log('Setting up calculateCostBtn event listener');
             // Remove any existing event listeners to prevent duplicates
             calculateCostBtn.replaceWith(calculateCostBtn.cloneNode(true));
             document.getElementById('calculateCostBtn').addEventListener('click', async () => {
-                console.log('Calculate Cost button clicked');
                 try {
                     toggleSection('costSection', true);
-                    console.log('Calculating and displaying costs...');
                     await calculateAndDisplayCosts();
                 } catch (error) {
                     console.error('Error in calculate cost button click:', error);
                 }
             });
-        } else {
-            console.warn('calculateCostBtn not found in the DOM');
         }
     };
     
@@ -427,7 +401,6 @@ function updateMaterial(processId, materialId) {
         calculateOperation(processId, operationType);
     }
 }
-
 // Add a new process entry to the list
 function addProcess() {
     // Get the current values directly from the DOM
@@ -464,9 +437,8 @@ function addProcess() {
         selectedOption.setAttribute('data-type', operationType);
     }
     
-    // Create a unique ID for this process entry
-    const timestamp = Date.now();
-    const processId = `process_${operationId}_${timestamp}`;
+    // Use the operation ID directly as the process ID
+    const processId = `process_${operationId}`;
     
     // Get the selected material
     const selectedMaterial = materialSelect.options[materialSelect.selectedIndex];
@@ -543,18 +515,26 @@ function addProcess() {
     console.log('Process successfully added.');
 }
 
+
+
+
 /**
  * Generate form HTML based on operation type
  * @param {string} operationId - The ID of the operation
  * @param {string} operationType - The type of operation (e.g., 'facing', 'turning')
  * @returns {string} HTML string for the operation form
  */
+
+
+
+
+
 function generateOperationForm(operationId, operationType) {
+
     if (!operationType) {
         console.error('No operation type provided');
-        return '';
+        return '<div class="alert alert-danger">No operation type specified</div>';
     }
-
     // Use the provided operationId which already has the format 'process_X'
     const entryId = operationId;
     const opType = operationType.toLowerCase();
@@ -600,269 +580,315 @@ function generateOperationForm(operationId, operationType) {
         ${input}
       </div>`;
 };
+
     
-    // Form templates for each operation type
-    const formTemplates = {
-        'facing': () => [
-            formGroup('Diameter (mm)', 'diameter'),
-            formGroup('Depth of Cut (mm)', 'depth_of_cut'),
-            formGroup('Feed (mm/rev)', 'feed'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'facing')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'turning': () => [
-            formGroup('Start Diameter (mm)', 'start_diameter'),
-            formGroup('End Diameter (mm)', 'end_diameter'),
-            formGroup('Length (mm)', 'length'),
-            formGroup('Depth of Cut (mm)', 'depth_of_cut'),
-            formGroup('Feed (mm/rev)', 'feed'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'turning')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'drilling': () => [
-            formGroup('Hole Depth (mm)', 'hole_depth'),
-            formGroup('Hole Diameter (mm)', 'hole_diameter'),
-            formGroup('Feed (mm/rev)', 'feed'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'drilling')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'reaming': () => [
-            formGroup('Hole Diameter (mm)', 'hole_diameter'),
-            formGroup('Hole Depth (mm)', 'hole_depth'),
-            formGroup('Feed (mm/rev)', 'feed'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'reaming')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'boring': () => [
-            formGroup('Hole Diameter (mm)', 'hole_diameter'),
-            formGroup('Hole Depth (mm)', 'hole_depth'),
-            formGroup('Cutting Depth (mm)', 'cutting_depth'),
-            formGroup('Feed (mm/rev)', 'feed'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'boring')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'threading': () => [
-            formGroup('Thread Length (mm)', 'thread_length'),
-            formGroup('Thread Pitch (mm/thread)', 'thread_pitch'),
-            formGroup('Threads per Pass', 'threads_per_pass'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'threading')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'grooving': () => [
-            formGroup('Groove Width (mm)', 'groove_width'),
-            formGroup('Groove Depth (mm)', 'groove_depth'),
-            formGroup('Feed (mm/rev)', 'feed'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'grooving')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'parting': () => [
-            formGroup('Parting Diameter (mm)', 'parting_diameter'),
-            formGroup('Parting Tool Width (mm)', 'tool_width'),
-            formGroup('Feed (mm/rev)', 'feed'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'parting')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'knurling': () => [
-            formGroup('Knurling Length (mm)', 'knurling_length'),
-            formGroup('Workpiece Diameter (mm)', 'workpiece_diameter'),
-            formGroup('Knurl Pitch (teeth per inch)', 'knurl_pitch'),
-            formGroup('Spindle Speed (RPM)', 'spindle_speed'),
-            `<div class="form-group mt-4">
-                <button type="button" 
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'knurling')">
-                    <i class="fas fa-calculator"></i> Calculate Time
-                </button>
-                <div class="form-group">
-                    <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
-                    <input id="${entryId}_time" 
-                           type="number" 
-                           class="form-control" 
-                           placeholder="Enter time in minutes" 
-                           step="0.01"
-                           min="0"
-                           onchange="calculateAndDisplayTimes()">
-                </div>
-            </div>`
-        ].join(''),
-        'idle': () => [
-            formGroup('Idle Operation Type', 'idle_type', {
-                type: 'select',
-                options: [
-                    { value: 'tool_movement', label: 'Tool Movement' },
-                    { value: 'tool_replacement', label: 'Tool Replacement' },
-                    { value: 'reorient_workpiece', label: 'Reorient Workpiece' },
-                    { value: 'inspection', label: 'Inspection' },
-                    { value: 'load_part', label: 'Load/Unload Part' },
-                    { value: 'other', label: 'Other' }
-                ]
-            }),
-            formGroup('Idle Time (minutes)', 'idle_time', {
-                type: 'number',
-                step: '0.1',
-                min: '0'
-            }),
-            `<div class="form-group mt-4">
-                <button type="button"
-                        class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        onclick="calculateOperationTime('${entryId}', 'idle')">
-                    <i class="fas fa-calculator"></i> Calculate Idle Time
-                </button>
-                <input id="${entryId}_total_time"
-                       type="text"
-                       class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50"
-                       placeholder="Idle Time (minutes)"
-                       readonly>
-            </div>`
-            
-        ].join('')
-    };
+// Form templates for each operation type
+const formTemplates = {
+    'facing': () => [
+        formGroup('Diameter (mm)', 'diameter'),
+        formGroup('Depth of Cut (mm)', 'depth_of_cut'),
+        formGroup('Feed (mm/rev)', 'feed'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'facing')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'turning': () => [
+        formGroup('Start Diameter (mm)', 'start_diameter'),
+        formGroup('End Diameter (mm)', 'end_diameter'),
+        formGroup('Length (mm)', 'length'),
+        formGroup('Depth of Cut (mm)', 'depth_of_cut'),
+        formGroup('Feed (mm/rev)', 'feed'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'turning')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'drilling': () => [
+        formGroup('Hole Depth (mm)', 'hole_depth'),
+        formGroup('Hole Diameter (mm)', 'hole_diameter'),
+        formGroup('Feed (mm/rev)', 'feed'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'drilling')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'reaming': () => [
+        formGroup('Hole Diameter (mm)', 'hole_diameter'),
+        formGroup('Hole Depth (mm)', 'hole_depth'),
+        formGroup('Feed (mm/rev)', 'feed'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'reaming')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'boring': () => [
+        formGroup('Hole Diameter (mm)', 'hole_diameter'),
+        formGroup('Hole Depth (mm)', 'hole_depth'),
+        formGroup('Cutting Depth (mm)', 'cutting_depth'),
+        formGroup('Feed (mm/rev)', 'feed'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'boring')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'threading': () => [
+        formGroup('Thread Length (mm)', 'thread_length'),
+        formGroup('Thread Pitch (mm/thread)', 'thread_pitch'),
+        formGroup('Threads per Pass', 'threads_per_pass'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'threading')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'grooving': () => [
+        formGroup('Groove Width (mm)', 'groove_width'),
+        formGroup('Groove Depth (mm)', 'groove_depth'),
+        formGroup('Feed (mm/rev)', 'feed'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'grooving')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'parting': () => [
+        formGroup('Parting Diameter (mm)', 'parting_diameter'),
+        formGroup('Parting Tool Width (mm)', 'tool_width'),
+        formGroup('Feed (mm/rev)', 'feed'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'parting')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'knurling': () => [
+        formGroup('Knurling Length (mm)', 'knurling_length'),
+        formGroup('Workpiece Diameter (mm)', 'workpiece_diameter'),
+        formGroup('Spindle Speed (RPM)', 'spindle_speed'),
+        `<div class="form-group mt-4">
+            <button type="button" 
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'knurling')">
+                <i class="fas fa-calculator"></i> Calculate Time
+            </button>
+            <div class="form-group">
+                <label for="${entryId}_time" class="form-label">Operation Time (minutes)</label>
+                <input id="${entryId}_time" 
+                       type="number" 
+                       class="form-control" 
+                       placeholder="Enter time in minutes" 
+                       step="0.01"
+                       min="0"
+                       onchange="calculateAndDisplayTimes()">
+            </div>
+        </div>`
+    ].join(''),
+    'idle': () => [
+        formGroup('Idle Operation Type', 'idle_type', {
+            type: 'select',
+            options: [
+                { value: 'tool_movement', label: 'Tool Movement' },
+                { value: 'tool_replacement', label: 'Tool Replacement' },
+                { value: 'reorient_workpiece', label: 'Reorient Workpiece' },
+                { value: 'inspection', label: 'Inspection' },
+                { value: 'load_part', label: 'Load/Unload Part' },
+                { value: 'other', label: 'Other' }
+            ]
+        }),
+        formGroup('Idle Time (minutes)', 'idle_time', {
+            type: 'number',
+            step: '0.1',
+            min: '0'
+        }),
+        `<div class="form-group mt-4">
+            <button type="button"
+                    class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    onclick="calculateOperationTime('${entryId}', 'idle')">
+                <i class="fas fa-calculator"></i> Calculate Idle Time
+            </button>
+            <input id="${entryId}_total_time"
+                   type="text"
+                   class="mt-2 block w-full p-2 border border-gray-300 rounded-md bg-gray-50"
+                   placeholder="Idle Time (minutes)"
+                   readonly>
+        </div>`
+        
+    ].join('')
+};
+
+// Get the form generator function for the requested operation type
+const formGenerator = formTemplates[opType];
+if (!formGenerator) {
+    console.error(`No form template found for operation type: ${operationType}`);
+    return '';
+}
+
+try {
+    return formGenerator();
+} catch (error) {
+    console.error(`Error generating form for operation ${operationType}:`, error);
+    return '';
+}
+}
+
+// ============================ TIME CALCULATION ============================
+
+/**
+ * Calculate and display the total machining time for all processes
+ */
+function calculateAndDisplayTimes() {
+    let totalTime = 0;
+    let totalCost = 0;
     
-    // Get the form generator function for the requested operation type
-    const formGenerator = formTemplates[opType];
-    if (!formGenerator) {
-        console.error(`No form template found for operation type: ${operationType}`);
-        return '';
+    // Get all time elements
+    const timeElements = document.querySelectorAll('.time-display');
+    const costElements = document.querySelectorAll('.cost-display');
+    
+    // Sum up all times and costs
+    timeElements.forEach(el => {
+        const time = parseFloat(el.textContent) || 0;
+        totalTime += time;
+    });
+    
+    costElements.forEach(el => {
+        const cost = parseFloat(el.textContent.replace(/[^0-9.-]+/g,"")) || 0;
+        totalCost += cost;
+    });
+    
+    // Update the total time display
+    const totalTimeElement = document.getElementById('totalTime');
+    const totalCostElement = document.getElementById('totalCost');
+    
+    if (totalTimeElement) {
+        totalTimeElement.textContent = totalTime.toFixed(2) + ' min';
     }
     
-    try {
-        return formGenerator();
-    } catch (error) {
-        console.error(`Error generating form for operation ${operationType}:`, error);
-        return '';
+    if (totalCostElement) {
+        totalCostElement.textContent = '₹' + totalCost.toFixed(2);
     }
+    
+    return { time: totalTime, cost: totalCost };
 }
     
 // ============================ UTILITY FUNCTIONS ============================
-
+function removeProcess(processId) {
+    const element = document.getElementById(processId);
+    if (element) {
+        element.remove();
+        calculateAndDisplayTimes();
+        console.log('Removed process:', processId);
+    }
+}
 // Remove an operation entry
 function removeEntry(entryId) {
     const entry = document.getElementById(entryId);
@@ -980,11 +1006,56 @@ function updateParamFormVisibility() {
 
 // ============================ GLOBAL EXPORTS ============================
 
+// Make these functions available globally
 window.toggleSection = toggleSection;
 window.updateParamFormVisibility = updateParamFormVisibility;
-window.updateToolTime = updateToolTime;
-window.updateMiscTime = updateMiscTime;
 window.clearAll = clearAll;
+
+// Import and expose time and cost module functions globally
+(async function() {
+    try {
+        // Import time module
+        const timeModule = await import('/static/time.js');
+        // Import cost module
+        const costModule = await import('/static/cost.js');
+
+        // Expose time functions globally for inline event handlers
+        window.calculateOperationTime = timeModule.calculateOperationTime;
+        window.calculateAndDisplayTimes = timeModule.calculateAndDisplayTimes;
+        window.updateToolTime = timeModule.updateToolTime;
+        window.updateMiscTime = timeModule.updateMiscTime;
+        window.updateSetupTime = timeModule.updateSetupTime;
+        window.updateIfExists = timeModule.updateIfExists;
+        window.updateOperationResultUI = timeModule.updateOperationResultUI;
+
+        // Expose cost functions globally
+        if (costModule.calculateAndDisplayCosts) {
+            window.calculateAndDisplayCosts = costModule.calculateAndDisplayCosts;
+        }
+        if (costModule.calculateMaterialCost) {
+            window.calculateMaterialCost = costModule.calculateMaterialCost;
+        }
+        if (costModule.calculateLaborCost) {
+            window.calculateLaborCost = costModule.calculateLaborCost;
+        }
+        if (costModule.calculateMachineCost) {
+            window.calculateMachineCost = costModule.calculateMachineCost;
+        }
+        if (costModule.calculateToolingCost) {
+            window.calculateToolingCost = costModule.calculateToolingCost;
+        }
+        if (costModule.calculateSetupIdleCost) {
+            window.calculateSetupIdleCost = costModule.calculateSetupIdleCost;
+        }
+        if (costModule.calculateTotalCost) {
+            window.calculateTotalCost = costModule.calculateTotalCost;
+        }
+
+        console.log("✅ Time and cost functions loaded and globally assigned.");
+    } catch (error) {
+        console.error("❌ Failed to import modules:", error);
+    }
+})();
 window.calculateOperationTime = calculateOperationTime;
 window.removeEntry = removeEntry;
 

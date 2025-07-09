@@ -113,7 +113,7 @@ def get_parameters(material_id, operation_id):
         params = MachiningParameter.query.filter_by(
             material_id=material_id,
             operation_id=operation_id
-        ).first()
+        ).all()
         
         if not params:
             return jsonify({
@@ -181,7 +181,7 @@ def calculate():
         params = MachiningParameter.query.filter_by(
             material_id=data['material_id'],
             operation_id=data['operation_id']
-        ).first()
+        ).all()
         
         if not params:
             # Get available materials for this operation to suggest alternatives
@@ -225,7 +225,9 @@ def calculate():
                 module = __import__(module_path, fromlist=[class_name])
                 operation_class = getattr(module, class_name)
                 # Initialize and calculate
-                operation = operation_class(params, material.machinability_rating or 0.5, data['dimensions'])
+                # Ensure we're passing the first parameter if params is a list
+                db_params = params[0] if isinstance(params, list) and len(params) > 0 else params
+                operation = operation_class(db_params, material.machinability_rating or 0.5, data['dimensions'])
                 result = operation.calculate()
             except (ImportError, AttributeError) as e:
                 logger.error(f"Error initializing {class_name}: {str(e)}")

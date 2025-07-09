@@ -25,7 +25,8 @@ function getCustomerDetails() {
     return { name: name || 'N/A', project: project || 'N/A', orderId };
 }
 
-export async function exportToPDF(type = 'customer') {
+// Make exportToPDF available globally
+window.exportToPDF = async function(type = 'customer') {
     const { jsPDF } = window.jspdf.jsPDF ? window.jspdf : { jsPDF: window.jspdf };
     if (!jsPDF) {
         alert("PDF library not loaded.");
@@ -99,42 +100,73 @@ export async function exportToPDF(type = 'customer') {
 
     // Add content based on PDF type
     if (type === 'customer') {
-        // Cost summary for customer - simplified
-        const startY = customerDetails ? 85 : 60;
+        let currentY = customerDetails ? 85 : 60;
         
+        // Add material information
+        const materialSelect = document.getElementById('materialSelect');
+        const selectedMaterial = materialSelect ? materialSelect.options[materialSelect.selectedIndex]?.text : 'Not Specified';
+        
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Material:', 20, currentY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(selectedMaterial, 50, currentY);
+        currentY += 10;
+        
+        // Add operations list
+        const operationEntries = Array.from(document.querySelectorAll('.operation-entry'));
+        if (operationEntries.length > 0) {
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Operations:', 20, currentY);
+            currentY += 8;
+            
+            doc.setFont('helvetica', 'normal');
+            operationEntries.forEach((entry, index) => {
+                const operationName = entry.querySelector('.operation-title')?.textContent || `Operation ${index + 1}`;
+                const timeInput = entry.querySelector('input[type="text"][readonly]');
+                const time = timeInput ? timeInput.value + ' min' : '';
+                
+                doc.text(`• ${operationName} ${time}`, 25, currentY);
+                currentY += 6;
+                
+                // Add some space after each operation
+                if (index < operationEntries.length - 1) {
+                    currentY += 2;
+                }
+            });
+            
+            currentY += 10; // Extra space before cost table
+        }
+        
+        // Cost summary for customer
         doc.autoTable({
-            startY: startY,
+            startY: currentY,
             head: [
                 [
                     { content: 'DESCRIPTION', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102] }},
-                    { content: 'QUANTITY', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102], halign: 'right' }},
                     { content: 'AMOUNT (₹)', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102], halign: 'right' }}
                 ]
             ],
             body: [
                 [
-                    { content: 'Non-Productive Cost', styles: { fontStyle: 'bold' }},
-                    { content: '1', styles: { halign: 'right' }},
+                    { content: 'Material & Setup', styles: { fontStyle: 'bold' }},
                     { content: `₹${nonProductiveCost.toFixed(2)}`, styles: { halign: 'right' }}
                 ],
                 [
-                    { content: 'Machining Cost', styles: { fontStyle: 'bold' }},
-                    { content: '1', styles: { halign: 'right' }},
+                    { content: 'Machining', styles: { fontStyle: 'bold' }},
                     { content: `₹${machineCost.toFixed(2)}`, styles: { halign: 'right' }}
                 ],
                 [
-                    { content: 'Tooling Cost', styles: { fontStyle: 'bold' }},
-                    { content: '1', styles: { halign: 'right' }},
+                    { content: 'Tooling', styles: { fontStyle: 'bold' }},
                     { content: `₹${toolingCost.toFixed(2)}`, styles: { halign: 'right' }}
                 ],
                 [
-                    { content: 'Overhead Charges (40%)', styles: { fontStyle: 'bold' }},
-                    { content: '1', styles: { halign: 'right' }},
+                    { content: 'Overhead (40%)', styles: { fontStyle: 'bold' }},
                     { content: `₹${overheadCost.toFixed(2)}`, styles: { halign: 'right' }}
                 ],
                 [
                     { content: 'TOTAL ESTIMATED COST', styles: { fontStyle: 'bold' }},
-                    { content: '', styles: { halign: 'right' }},
                     { content: finalCost, styles: { fontStyle: 'bold', halign: 'right' }}
                 ]
             ],
@@ -147,13 +179,13 @@ export async function exportToPDF(type = 'customer') {
             },
             columnStyles: {
                 0: { cellWidth: 'auto' },
-                1: { cellWidth: 30, halign: 'right' },
-                2: { cellWidth: 40, halign: 'right' }
+                1: { cellWidth: 50, halign: 'right' }
             },
             styles: { 
-                fontSize: 10,
-                cellPadding: 3,
-                lineWidth: 0.5
+                fontSize: 11,
+                cellPadding: 4,
+                lineWidth: 0.5,
+                cellPadding: 5
             },
             margin: { top: 10 }
         });
@@ -173,20 +205,187 @@ export async function exportToPDF(type = 'customer') {
         doc.text('Thank you for choosing CWISS - IIT Kharagpur', 105, 280, { align: 'center' });
 
     } else if (type === 'shop') {
-        // Time summary for shop
+        // Get all operation entries
+        const operationEntries = Array.from(document.querySelectorAll('.operation-entry'));
+        
+        // Helper function to format parameter label
+        const formatLabel = (label) => {
+            if (!label) return '';
+            // Remove units in parentheses and trim
+            return label.replace(/\([^)]*\)/g, '').trim();
+        };
+
+        // Prepare operations data for the table
+        const operationsData = [];
+        
+        operationEntries.forEach((entry, index) => {
+            const operationName = entry.querySelector('.operation-title')?.textContent || `Operation ${index + 1}`;
+            const timeInput = entry.querySelector('input[type="text"][readonly]');
+            const time = timeInput ? parseFloat(timeInput.value).toFixed(2) + ' min' : 'N/A';
+            
+            // Get all input groups and their labels
+            const paramGroups = [];
+            const formGroups = entry.querySelectorAll('.form-group:not(.time-group)');
+            
+            formGroups.forEach(group => {
+                const label = group.querySelector('label');
+                const input = group.querySelector('input:not([type="hidden"])');
+                
+                if (input && input.value && label?.textContent) {
+                    const paramName = formatLabel(label.textContent);
+                    const unitMatch = label.textContent.match(/\(([^)]+)\)/);
+                    const unit = unitMatch ? unitMatch[1] : '';
+                    
+                    paramGroups.push({
+                        name: paramName,
+                        value: input.value,
+                        unit: unit
+                    });
+                }
+            });
+            
+            // Format parameters for display
+            const params = [];
+            paramGroups.forEach(param => {
+                if (param.unit) {
+                    params.push(`${param.name} = ${param.value} ${param.unit}`);
+                } else {
+                    params.push(`${param.name} = ${param.value}`);
+                }
+            });
+            
+            operationsData.push({
+                name: operationName,
+                time: time,
+                params: params,
+                rawParams: paramGroups
+            });
+        });
+
+        // Operations table
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Operations Summary', 14, 50);
+
+        // Operations details table
         doc.autoTable({
-            startY: 50,
-            head: [['Operation', 'Time (min)']],
+            startY: 60,
+            head: [
+                [
+                    { content: 'Operation', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102] }},
+                    { content: 'Parameters', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102] }},
+                    { content: 'Time (min)', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102], halign: 'center' }}
+                ]
+            ],
+            body: operationsData.flatMap((op, idx) => {
+                // First row: Operation name and time
+                const rows = [
+                    [
+                        { content: op.name, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] }},
+                        { content: op.params[0] || 'No parameters', styles: { fontSize: 9, fillColor: [255, 255, 255] }},
+                        { content: op.time, styles: { halign: 'center', fillColor: [240, 240, 240] }}
+                    ]
+                ];
+                
+                // Additional rows for remaining parameters
+                for (let i = 1; i < op.params.length; i++) {
+                    rows.push([
+                        { content: '', styles: { fillColor: [255, 255, 255] }},
+                        { content: op.params[i], styles: { fontSize: 9, fillColor: [255, 255, 255] }},
+                        { content: '', styles: { fillColor: [255, 255, 255] }}
+                    ]);
+                }
+                
+                // Add a small gap after each operation
+                if (idx < operationsData.length - 1) {
+                    rows.push([
+                        { content: '', border: [false, false, false, false] },
+                        { content: '', border: [false, false, false, false] },
+                        { content: '', border: [false, false, false, false] }
+                    ]);
+                }
+                
+                return rows;
+            }),
+            theme: 'grid',
+            styles: { 
+                fontSize: 9,
+                cellPadding: 3,
+                lineWidth: 0.2,
+                overflow: 'linebreak',
+                cellWidth: 'wrap',
+                lineColor: [220, 220, 220]
+            },
+            columnStyles: {
+                0: { cellWidth: 45, minCellHeight: 10, cellPadding: { top: 2, right: 2, bottom: 2, left: 2 } },
+                1: { cellWidth: 'auto', minCellHeight: 10, cellPadding: { top: 2, right: 2, bottom: 2, left: 4 } },
+                2: { cellWidth: 25, halign: 'center', minCellHeight: 10, cellPadding: { top: 2, right: 2, bottom: 2, left: 2 } }
+            },
+            headStyles: {
+                fillColor: [0, 51, 102],
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+                lineWidth: 0.3
+            },
+            alternateRowStyles: {
+                fillColor: [248, 248, 248]
+            }
+        });
+
+        // Time summary table
+        doc.autoTable({
+            startY: doc.lastAutoTable.finalY + 10,
+            head: [
+                [
+                    { content: 'Time Summary', colSpan: 2, styles: { 
+                        fontStyle: 'bold', 
+                        textColor: [255, 255, 255], 
+                        fillColor: [0, 51, 102],
+                        halign: 'center'
+                    }}
+                ],
+                [
+                    { content: 'Component', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102] }},
+                    { content: 'Minutes', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 51, 102], halign: 'center' }}
+                ]
+            ],
             body: [
-                ['Machining Time', machiningTime],
-                ['Setup Time', setupTime],
-                ['Idle Time', idleTime],
-                [{ content: 'Total Time', styles: { fontStyle: 'bold' }}, 
-                 { content: totalTime, styles: { fontStyle: 'bold' }}]
+                ['Machining Time', { content: machiningTime, styles: { halign: 'center' }}],
+                ['Setup Time', { content: setupTime, styles: { halign: 'center' }}],
+                ['Idle Time', { content: idleTime, styles: { halign: 'center' }}],
+                [
+                    { content: 'Total Time', styles: { 
+                        fontStyle: 'bold',
+                        fillColor: [240, 240, 240]
+                    }}, 
+                    { 
+                        content: totalTime, 
+                        styles: { 
+                            fontStyle: 'bold', 
+                            halign: 'center',
+                            fillColor: [240, 240, 240]
+                        }
+                    }
+                ]
             ],
             theme: 'grid',
-            headStyles: { fillColor: [41, 128, 185] },
-            styles: { fontSize: 10 }
+            styles: { 
+                fontSize: 10,
+                cellPadding: 3,
+                lineWidth: 0.3,
+                lineColor: [220, 220, 220]
+            },
+            columnStyles: {
+                0: { cellWidth: 'auto', cellPadding: { left: 8, top: 3, right: 3, bottom: 3 } },
+                1: { cellWidth: 40, halign: 'center', cellPadding: { left: 3, top: 3, right: 8, bottom: 3 } }
+            },
+            headStyles: {
+                fillColor: [0, 51, 102],
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+                lineWidth: 0.3
+            }
         });
 
         // Cost details for shop

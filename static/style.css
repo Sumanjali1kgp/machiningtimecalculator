@@ -7,7 +7,118 @@
     display: none !important;
 }
 
+
 /* Time Section Styling */
+/* === TIME SECTION (Matching Cost Section Style) === */
+
+#timeSection {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transition: opacity 0.3s ease-in-out;
+    margin-top: 2rem;
+    background-color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Time Inputs Grid */
+.time-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.time-inputs label {
+    font-weight: 500;
+    color: #374151;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.time-inputs input {
+    width: 100%;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.time-inputs input:focus {
+    border-color: #3b82f6;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+/* Table Styling for Time Breakdown */
+.time-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 2rem;
+    border: 1px solid #e5e7eb;
+}
+
+.time-table thead {
+    background-color: #f9fafb;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.time-table th,
+.time-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 0.875rem;
+}
+
+.time-table td.value {
+    font-weight: 600;
+    color: #111827;
+}
+
+.time-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Summary Card */
+.time-summary {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border: 1px solid #bae6fd;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.time-summary h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0369a1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.time-summary .value {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: #0c4a6e;
+}
+
+.time-summary .unit {
+    font-size: 1rem;
+    color: #0ea5e9;
+    font-weight: 500;
+}
+
+
 .time-cost-section {
     background-color: #ffffff;
     border-radius: 8px;
@@ -496,7 +607,8 @@ select:focus,
     border-color: #b6effb;
 }
 
-/* Time and Cost Sections */
+
+
 .time-cost-section {
     background: white;
     border-radius: var(--border-radius-md);
@@ -1269,6 +1381,7 @@ textarea.form-control {
 .operation-form {
     background: white;
     border-radius: 12px;
+    height: 90%;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     padding: 2rem;
     border: 1px solid #e2e8f0;
@@ -1277,6 +1390,106 @@ textarea.form-control {
     margin-bottom: 0;
 }
 
+
+.operation-forms-container {
+    margin-top: 1.5rem;
+}
+
+.process-entry {
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.process-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.process-header h4 {
+    margin: 0;
+    color: #2d3748;
+    font-weight: 600;
+}
+
+.btn-remove {
+    background: #e53e3e;
+    color: white;
+    border: none;
+    border-radius: 0.25rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
+}
+
+.btn-remove:hover {
+    background: #c53030;
+}
+
+.process-form {
+    padding: 1.25rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #4a5568;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #4a5568;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+    border-color: #4299e1;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.alert {
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+}
+
+.alert-danger {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+
+.alert-warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+}
 /* Responsive adjustments */
 @media (max-width: 992px) {
     .form-container {
@@ -1851,7 +2064,6 @@ h1, h2, h3, h4, h5, h6 {
     height: 50px;
     margin-right: 1.5rem;
 }
-
 .nav-title h1 {
     font-size: 1.5rem;
     color: white;
@@ -2210,7 +2422,7 @@ h1, h2, h3, h4, h5, h6 {
     transition: all 0.3s ease-in-out;
     opacity: 0;
     transform: translateY(10px);
-    height: 0;
+    height: 90px;
     overflow: hidden;
     visibility: hidden;
 }
@@ -2463,6 +2675,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Operation forms container */
 .operation-container {
   max-width: 840px; /* 400px * 2 + 40px gap */
+  height: 90px;
   margin: 0 auto 30px;
   width: 100%;
   display: grid;
@@ -2882,4 +3095,3 @@ label {
 
 /* Add closing brace for any open media query or rule */
 }
-
